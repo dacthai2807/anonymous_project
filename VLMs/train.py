@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Sequence, List
 
 from llava.build_model import get_model
+from dummy_datamodule import DummyDataModule
+
 
 @dataclass
 class ModelArguments:
@@ -84,6 +86,9 @@ model, tokenizer = get_model(model_args, data_args, training_args, attn_implemen
 # LightningModule
 lit_model = LLaVALitModule(model=model, training_args=training_args, tokenizer=tokenizer)
 
+# DataModule
+dummy_dm = DummyDataModule(batch_size=training_args.per_device_train_batch_size)
+
 # Logger + Checkpoint
 logger = TensorBoardLogger("logs", name="llava")
 checkpoint = ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min")
@@ -105,4 +110,4 @@ trainer = Trainer(
 )
 
 # Fit
-trainer.fit(lit_model, datamodule=your_lightning_datamodule)
+trainer.fit(lit_model, datamodule=dummy_dm)
