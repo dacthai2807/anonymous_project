@@ -36,12 +36,13 @@ class MonaiDataset(CacheDataset):
 
     def __getitem__(self, index):
         sample = self.data[index]
-        conv_content = sample["conversation"]
+        print(sample)
+        conv_content = sample["conversations"]
         transformed_item = self.transform(sample["image"])
 
         final_sample = {
-            self.image_key = transformed_item,
-            self.hint_key = conv_content
+            self.image_key : transformed_item,
+            self.hint_key : conv_content
         }
 
 
@@ -95,28 +96,27 @@ class MonaiDataModule(LightningDataModule):
         self.test_tuples: List[Dict] = []
 
     def _load_sample(self):
-        print(f"Loading image samples from: {self.root_folder}")
+        print(f"Loading image samples from: {self.train_data} and {self.valid_data}")
 
-        if not os.path.isdir(self.root_folder):
-            print(f"Warning: Data directory not found at {self.root_folder}")
-            return
+        # if not os.path.exists(self.train_data) or os.path.exists(self.valid_data):
+        #     print(f"Warning: Data directory not found at {self.train_data}")
+        #     return
 
-        self.train_tuples = json.loads(json.open(self.train_data, "r"))
-        self.val_tuples = json.loads(json.open(self.valid_data, "r"))
+        self.train_tuples = json.load(open(self.train_data, "r"))
+        self.val_tuples = json.load(open(self.valid_data, "r"))
         
         print(f"Created {len(self.train_tuples)} training, {len(self.val_tuples)} val")
 
     def setup(self, stage: Optional[str] = None):
         self._load_sample()
         if stage == 'fit' or stage is None:
-            self._train_ds = ACT2Dataset(
+            self._train_ds = MonaiDataset(
                 self.train_tuples, 
                 self.train_transforms, 
-                image_key='tif', 
-                hint_key='png', 
-                txt_key='txt'
+                image_key='image', 
+                hint_key='hint'
             )
-            self._val_ds = ACT2Dataset(
+            self._val_ds = MonaiDataset(
                 self.val_tuples, 
                 self.val_transforms, 
                 image_key='image', 
@@ -127,7 +127,7 @@ class MonaiDataModule(LightningDataModule):
                 self.val_tuples, 
                 self.val_transforms,
                 image_key='image', 
-                hint_key='hint', '
+                hint_key='hint'
             )
 
     def _create_dataloader(self, dataset: Dataset, shuffle: bool = False) -> DataLoader:
@@ -154,17 +154,17 @@ class MonaiDataModule(LightningDataModule):
         return self._create_dataloader(self._test_ds)
     
 def main():
-    train_data = ""
-    val_data = ""
+    train_data = "/data/data_remote/PET_report_paired_fixed/pretrain_data/single_turn/align_train.json"
+    val_data = "/data/data_remote/PET_report_paired_fixed/pretrain_data/single_turn/align_train.json"
     
     print("="*60)
     print("DataModule Verification")
     print("="*60)
 
     # Instantiate the datamodule
-    datamodule = ACT2DataModule(
+    datamodule = MonaiDataModule(
         train_data=train_data,
-        valid_data = valid_data,
+        valid_data = val_data,
         image_H=512,
         image_W=512,
         micro_batch_size=2,
