@@ -54,7 +54,7 @@ def build_vision_tower(vision_tower_cfg, **kwargs):
         # )
         # cvit.hidden_size = 294912
         
-        # vision_tower = getattr(vision_tower_cfg, 'vision_tower', None)
+        vision_tower = getattr(vision_tower_cfg, 'vision_tower', None)
 
         is_absolute_path_exists = os.path.exists(vision_tower)
     

@@ -75,6 +75,7 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
+    type: str = 'PET/CT'
     question_file: str = field(default=None,
                            metadata={"help": "Path to the question_file data."})
     lazy_preprocess: bool = False
@@ -839,8 +840,12 @@ def test(attn_implementation=None):
 
         for line in tqdm(questions):
             idx = line["id"]
-            image_file = line["image"]
-
+            if data_args.type == 'PET/CT':
+                pet_image_file = line["image"]
+                ct_image_file = pet_image_file.replace('images', 'ref_images')
+            else:
+                image_file = line["image"]
+            
             for convo in line["conversations"]:
                 if convo["from"] == "human":
                     qs = preprocess_question(convo["value"])
@@ -860,15 +865,28 @@ def test(attn_implementation=None):
             # print('PROMPT: ', prompt)
             input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-            image = np.load(os.path.join(data_args.image_folder, image_file))
-            image_tensor = process_image(image)
+            if data_args.type == 'PET/CT':
+                pet_image = np.load(os.path.join(data_args.image_folder, pet_image_file))
+                pet_image_tensor = process_image(pet_image)
+                
+                ct_image = np.load(os.path.join(data_args.image_folder, ct_image_file))
+                ct_image_tensor = process_image(ct_image, is_pet=False)
+            else:
+                image = np.load(os.path.join(data_args.image_folder, image_file))
+                is_pet = False if data_args == 'CT' else True
+                image_tensor = process_image(image, is_pet=is_pet)
 
             with torch.inference_mode():
                 output_ids = model.generate(
                     inputs=input_ids,
                     # images=image_tensor.unsqueeze(0).half().cuda(),
-                    images=image_tensor.unsqueeze(0).to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device),
-                    image_sizes=[image.size],
+                    images={
+                        'PET': pet_image_tensor.unsqueeze(0).to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device),
+                        'CT': ct_image_tensor.unsqueeze(0).to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
+                    } if data_args.type == 'PET/CT' else {
+                        'data': image_tensor.unsqueeze(0).to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device),
+                    },
+                    image_sizes=[pet_image.size if data_args.type == 'PET/CT' else image.size],
                     do_sample=True if temperature > 0 else False,
                     # do_sample=False,
                     temperature=temperature,

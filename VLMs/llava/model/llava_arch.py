@@ -147,9 +147,12 @@ class LlavaMetaForCausalLM(ABC):
         return self.get_model().get_vision_tower()
 
     def encode_images(self, images):
-        
-        pet_images, ct_images = images['PET'], images['CT']
-        image_features = self.get_model().get_vision_tower()(pet_images, ct_images)
+        if 'PET' in images and 'CT' in images:
+            pet_images, ct_images = images['PET'], images['CT']
+            image_features = self.get_model().get_vision_tower()(pet_images, ct_images)
+        else:
+            images = images['data']
+            image_features = self.get_model().get_vision_tower()(images)
         image_features = image_features.view(image_features.shape[0], image_features.shape[1], -1)  # Reshape the output tensor
         image_features = self.get_model().mm_projector(image_features)
 

@@ -43,7 +43,7 @@ import wandb
 wandb.login(key='c0bf463d253eb9147fbe555216398f2838fe517c')
 wandb.init(
     project="VLM",
-    name="CTViT_LLaVAMed_align_v1",   
+    name="CTViT_LLaVAMed_lora_phase2",   
     entity="dacthai2807"
 )
 
@@ -78,6 +78,7 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
+    type: str = 'PET/CT'
     data_path: str = field(default=None,
                            metadata={"help": "Path to the training data."})
     eval_data_path: str = field(default=None,
@@ -672,7 +673,7 @@ import numpy as np
 class LazySupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, augment: callable,
+    def __init__(self, type: str, data_path: str, augment: callable, 
                  tokenizer: transformers.PreTrainedTokenizer,
                  data_args: DataArguments):
         super(LazySupervisedDataset, self).__init__()
@@ -686,6 +687,7 @@ class LazySupervisedDataset(Dataset):
         else:
             rank0_print("Not using augment")
         
+        self.type = type
         self.tokenizer = tokenizer
         self.list_data_dict = list_data_dict
         self.data_args = data_args
@@ -717,20 +719,31 @@ class LazySupervisedDataset(Dataset):
             sources = [sources]
         assert len(sources) == 1, "Don't know why it is wrapped to a list"  # FIXME
         if 'image' in sources[0]:
-            pet_image_file = self.list_data_dict[i]['image']
-            ct_image_file = pet_image_file.replace('images', 'ref_images')
-            image_folder = self.data_args.image_folder
-            # processor = self.data_args.image_processor
-            # image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
-            if self.augment is not None:
-                pet_image = load_with_augment(os.path.join(image_folder, pet_image_file), self.augment)
-                ct_image = load_with_augment(os.path.join(image_folder, ct_image_file), self.augment)
+            if self.type == 'PET/CT':
+                pet_image_file = self.list_data_dict[i]['image']
+                ct_image_file = pet_image_file.replace('images', 'ref_images')
+                image_folder = self.data_args.image_folder
+
+                if self.augment is not None:
+                    pet_image = load_with_augment(os.path.join(image_folder, pet_image_file), self.augment)
+                    ct_image = load_with_augment(os.path.join(image_folder, ct_image_file), self.augment)
+                else:
+                    pet_image = np.load(os.path.join(image_folder, pet_image_file))
+                    ct_image = np.load(os.path.join(image_folder, ct_image_file))
+    
+                pet_image = process_image(pet_image)
+                ct_image = process_image(ct_image, is_pet=False)
             else:
-                pet_image = np.load(os.path.join(image_folder, pet_image_file))
-                ct_image = np.load(os.path.join(image_folder, ct_image_file))
-   
-            pet_image = process_image(pet_image)
-            ct_image = process_image(ct_image, is_pet=False)
+                image_file = self.list_data_dict[i]['image']
+                image_folder = self.data_args.image_folder
+
+                if self.augment is not None:
+                    image = load_with_augment(os.path.join(image_folder, image_file), self.augment)
+                else:
+                    image = np.load(os.path.join(image_folder, image_file))
+
+                is_pet = False if self.type == 'CT' else True
+                image = process_image(image, is_pet=is_pet)
   
             sources = preprocess_multimodal(
                 copy.deepcopy([e["conversations"] for e in sources]),
@@ -747,8 +760,11 @@ class LazySupervisedDataset(Dataset):
 
         # image exist in the data
         if 'image' in self.list_data_dict[i]:
-            data_dict['pet_image'] = pet_image
-            data_dict['ct_image'] = ct_image
+            if self.type == 'PET/CT':
+                data_dict['pet_image'] = pet_image
+                data_dict['ct_image'] = ct_image
+            else:
+                data_dict['image'] = image
         elif self.data_args.is_multimodal:
             # image does not exist in the data, but the model is multimodal
             crop_size = self.data_args.image_processor.crop_size
@@ -788,17 +804,22 @@ class DataCollatorForSupervisedDataset(object):
                 batch['images'] = { 'PET': torch.stack(pet_images), 'CT': torch.stack(ct_images) } 
             else:
                 batch['images'] = { 'PET': pet_images, 'CT': ct_images }
-
+        else:
+            images = [instance['image'] for instance in instances]
+            if all(x is not None and x.shape == images[0].shape for x in images):
+                batch['images'] = { 'data': torch.stack(images) }  
+            else:
+                batch['images'] = { 'data': images }
         return batch
 
 
-def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
+def make_supervised_data_module(type: str, tokenizer: transformers.PreTrainedTokenizer,
                                 data_args) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
-    train_dataset = LazySupervisedDataset(tokenizer=tokenizer, augment=None,
+    train_dataset = LazySupervisedDataset(type=type, tokenizer=tokenizer, augment=None,
                                 data_path=data_args.data_path,
                                 data_args=data_args)
-    val_dataset = LazySupervisedDataset(tokenizer=tokenizer, augment=None,
+    val_dataset = LazySupervisedDataset(type=type, tokenizer=tokenizer, augment=None,
                                 data_path=data_args.eval_data_path,
                                 data_args=data_args)
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
@@ -995,7 +1016,7 @@ def train(attn_implementation=None):
 
     print("training_args: ", training_args)
     
-    data_module = make_supervised_data_module(tokenizer=tokenizer,
+    data_module = make_supervised_data_module(data_args.type, tokenizer=tokenizer,
                                               data_args=data_args)
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,

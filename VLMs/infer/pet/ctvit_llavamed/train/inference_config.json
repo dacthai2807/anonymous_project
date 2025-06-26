@@ -1,0 +1,12 @@
+{
+    "temperature": 0.5,
+    "top_p": null,
+    "num_beams": 1,
+    "base_model": "/home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/MultimodalFM/llava-med-v1.5-mistral-7b",
+    "lora_path": "/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/pet/ctvit_llavamed_lora/checkpoint-2708",
+    "question_file": "/home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/petct/pet/align_train.json",
+    "vision_tower": "/home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/pet_emb/ctvit.76000.pt",
+    "pretrain_mm_mlp_adapter": "/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/pet/ctvit_llavamed_lora/checkpoint-2708/mm_projector.bin",
+    "output_file": "./infer/pet/ctvit_llavamed/train/answers.jsonl",
+    "server": "llava1"
+}
