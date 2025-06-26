@@ -7,6 +7,7 @@
 # MODEL_VERSION=vicuna-v1-3-7b
 # MODEL_VERSION=llama-2-7b-chat
 export PYTHONPATH=/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs:$PYTHONPATH
+export OMP_NUM_THREADS=4
 # MODEL_VERSION=llava-med-v1.5-mistral-7b
 
 ########### DO NOT CHANGE ###########
@@ -14,20 +15,15 @@ export PYTHONPATH=/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViRe
 PROMPT_VERSION=v1
 ########### DO NOT CHANGE ###########
 
-python /home/hachi/anonymous_project/VLMs/train.py \
-    --model_name_or_path /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/MultimodalFM/llava-med-v1.5-mistral-7b \
+torchrun  --nproc_per_node=4 ~/hachi/anonymous_project/VLMs/train.py \
     --version $PROMPT_VERSION \
     --type PET/CT \
-    --data_path /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/align_train.json \
-    --eval_data_path /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/align_val.json \
-    --image_folder /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed \
-    --vision_tower /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/petct_emb/ctvit.89000.pt \
     --tune_mm_mlp_adapter True \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir /home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/ctvit_llavamed \
+    --output_dir  ~/hachi/anonymous_project/VLMs/checkpoints/ctvit_llavamed \
     --num_train_epochs 5 \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \

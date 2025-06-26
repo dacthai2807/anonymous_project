@@ -95,7 +95,7 @@ checkpoint = ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min")
 
 # Trainer
 trainer = Trainer(
-    max_epochs=training_args.num_train_epochs,
+    max_epochs= int(training_args.num_train_epochs),
     accelerator="gpu",
     devices="auto",  # Use all available GPUs
     precision="bf16-mixed",  # Equivalent to --bf16 True
