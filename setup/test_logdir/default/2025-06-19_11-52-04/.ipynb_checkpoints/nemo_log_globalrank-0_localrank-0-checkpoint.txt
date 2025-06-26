@@ -1,0 +1,109 @@
+[NeMo W 2025-06-19 11:51:46 ssm:43] The package `megatron.core` was not imported in this environment which is needed for SSMs.
+[NeMo I 2025-06-19 11:51:47 tokenizer_utils:232] Getting Megatron tokenizer for pretrained model name: megatron-gpt-345m, custom vocab file: None, and merges file: None
+[NeMo I 2025-06-19 11:51:47 megatron_utils:225] Downloading from https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-vocab.json to /home/hackathon/.cache/torch/megatron/megatron-gpt-345m_vocab
+[NeMo I 2025-06-19 11:51:54 megatron_utils:225] Downloading from https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-merges.txt to /home/hackathon/.cache/torch/megatron/megatron-gpt-345m_merges
+[NeMo I 2025-06-19 11:51:59 tokenizer_utils:130] Getting HuggingFace AutoTokenizer with pretrained_model_name: gpt2, vocab_file: /home/hackathon/.cache/torch/megatron/megatron-gpt-345m_vocab, merges_files: /home/hackathon/.cache/torch/megatron/megatron-gpt-345m_merges, special_tokens_dict: {}, and use_fast: False
+[NeMo I 2025-06-19 11:52:04 nemo_logger:160] Experiments will be logged at test_logdir/default/2025-06-19_11-52-04
+[NeMo W 2025-06-19 11:52:04 nemo_logger:188] "update_logger_directory" is True. Overwriting tensorboard logger "save_dir" to test_logdir
+[NeMo I 2025-06-19 11:52:04 megatron_init:443] Rank 0 has data parallel group : [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:449] Rank 0 has combined group of data parallel and context parallel : [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:454] All data parallel group ranks with context parallel combined: [[0]]
+[NeMo I 2025-06-19 11:52:04 megatron_init:457] Ranks 0 has data parallel rank: 0
+[NeMo I 2025-06-19 11:52:04 megatron_init:465] Rank 0 has context parallel group: [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:468] All context parallel group ranks: [[0]]
+[NeMo I 2025-06-19 11:52:04 megatron_init:469] Ranks 0 has context parallel rank: 0
+[NeMo I 2025-06-19 11:52:04 megatron_init:476] Rank 0 has model parallel group: [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:477] All model parallel group ranks: [[0]]
+[NeMo I 2025-06-19 11:52:04 megatron_init:486] Rank 0 has tensor model parallel group: [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:490] All tensor model parallel group ranks: [[0]]
+[NeMo I 2025-06-19 11:52:04 megatron_init:491] Rank 0 has tensor model parallel rank: 0
+[NeMo I 2025-06-19 11:52:04 megatron_init:518] Rank 0 has pipeline model parallel group: [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:530] Rank 0 has embedding group: [0]
+[NeMo I 2025-06-19 11:52:04 megatron_init:536] All pipeline model parallel group ranks: [[0]]
+[NeMo I 2025-06-19 11:52:04 megatron_init:537] Rank 0 has pipeline model parallel rank 0
+[NeMo I 2025-06-19 11:52:04 megatron_init:538] All embedding group ranks: [[0]]
+[NeMo I 2025-06-19 11:52:04 megatron_init:539] Rank 0 has embedding rank: 0
+[NeMo I 2025-06-19 11:52:05 base:48] Padded vocab_size: 50304, original vocab_size: 50257, dummy tokens: 47.
+[NeMo W 2025-06-19 11:52:05 megatron_strategy:440] Could not copy Trainer's 'max_steps' to LR scheduler's 'max_steps'. If you are not using an LR scheduler, this warning can safely be ignored.
+[NeMo I 2025-06-19 11:52:05 num_microbatches_calculator:228] setting number of microbatches to constant 4
+[NeMo I 2025-06-19 11:52:05 megatron_parallel:623]  > number of parameters on (tensor, pipeline) model parallel rank (0 ,0): 30750720
+[NeMo I 2025-06-19 11:52:05 utils:532] Setting up DistributedDataParallel with config DistributedDataParallelConfig(grad_reduce_in_fp32=True, overlap_grad_reduce=False, overlap_param_gather=False, align_param_gather=False, use_distributed_optimizer=False, num_distributed_optimizer_instances=1, check_for_nan_in_grad=True, check_for_large_grads=False, bucket_size=None, pad_buckets_for_high_nccl_busbw=False, average_in_collective=False, fp8_param_gather=False, use_custom_fsdp=False, data_parallel_sharding_strategy='no_shard', gradient_reduce_div_fusion=True, suggested_communication_unit_size=None, preserve_fp32_weights=True, keep_fp8_transpose_cache_when_using_custom_fsdp=False)
+[NeMo I 2025-06-19 11:52:05 utils:553] Number of buckets for gradient all-reduce / reduce-scatter: 1
+    Params for bucket 1 (30750720 elements, 30750720 padded size):
+    	module.decoder.layers.5.mlp.linear_fc2.weight
+    	module.decoder.layers.5.self_attention.linear_qkv.weight
+    	module.decoder.layers.4.mlp.linear_fc2.weight
+    	module.decoder.layers.4.self_attention.linear_qkv.weight
+    	module.decoder.layers.3.mlp.linear_fc2.weight
+    	module.decoder.layers.3.self_attention.linear_qkv.weight
+    	module.decoder.layers.2.mlp.linear_fc2.weight
+    	module.decoder.layers.2.self_attention.linear_qkv.weight
+    	module.decoder.layers.1.pre_mlp_layernorm.bias
+    	module.decoder.layers.1.input_layernorm.bias
+    	module.decoder.layers.0.input_layernorm.weight
+    	module.embedding.position_embeddings.weight
+    	module.decoder.layers.0.mlp.linear_fc2.weight
+    	module.decoder.layers.5.mlp.linear_fc1.weight
+    	module.decoder.layers.5.self_attention.linear_proj.weight
+    	module.decoder.layers.4.mlp.linear_fc1.weight
+    	module.decoder.layers.4.self_attention.linear_proj.weight
+    	module.decoder.layers.3.mlp.linear_fc1.weight
+    	module.decoder.layers.3.self_attention.linear_proj.weight
+    	module.decoder.layers.2.mlp.linear_fc1.weight
+    	module.decoder.layers.2.self_attention.linear_proj.weight
+    	module.decoder.layers.1.mlp.linear_fc2.bias
+    	module.decoder.layers.1.self_attention.linear_qkv.bias
+    	module.decoder.layers.1.mlp.linear_fc1.bias
+    	module.decoder.layers.1.self_attention.linear_proj.bias
+    	module.decoder.layers.0.mlp.linear_fc2.bias
+    	module.decoder.layers.1.self_attention.linear_qkv.weight
+    	module.decoder.layers.0.mlp.linear_fc1.bias
+    	module.decoder.layers.0.pre_mlp_layernorm.weight
+    	module.decoder.layers.2.input_layernorm.weight
+    	module.decoder.layers.1.pre_mlp_layernorm.weight
+    	module.decoder.layers.1.input_layernorm.weight
+    	module.decoder.layers.0.self_attention.linear_proj.bias
+    	module.decoder.layers.0.self_attention.linear_qkv.weight
+    	module.decoder.layers.0.input_layernorm.bias
+    	module.decoder.layers.0.self_attention.linear_proj.weight
+    	module.decoder.final_layernorm.weight
+    	module.decoder.layers.5.pre_mlp_layernorm.bias
+    	module.decoder.layers.5.input_layernorm.bias
+    	module.decoder.layers.4.pre_mlp_layernorm.bias
+    	module.decoder.layers.4.input_layernorm.bias
+    	module.decoder.layers.3.pre_mlp_layernorm.bias
+    	module.decoder.layers.3.input_layernorm.bias
+    	module.decoder.layers.2.pre_mlp_layernorm.bias
+    	module.decoder.layers.2.input_layernorm.bias
+    	module.decoder.layers.1.mlp.linear_fc2.weight
+    	module.decoder.layers.5.mlp.linear_fc2.bias
+    	module.decoder.layers.5.self_attention.linear_qkv.bias
+    	module.decoder.layers.4.mlp.linear_fc2.bias
+    	module.decoder.layers.4.self_attention.linear_qkv.bias
+    	module.decoder.layers.3.mlp.linear_fc2.bias
+    	module.decoder.layers.3.self_attention.linear_qkv.bias
+    	module.decoder.layers.2.mlp.linear_fc2.bias
+    	module.decoder.layers.2.self_attention.linear_qkv.bias
+    	module.decoder.layers.1.mlp.linear_fc1.weight
+    	module.decoder.layers.1.self_attention.linear_proj.weight
+    	module.decoder.layers.0.pre_mlp_layernorm.bias
+    	module.decoder.layers.5.mlp.linear_fc1.bias
+    	module.decoder.layers.5.self_attention.linear_proj.bias
+    	module.decoder.layers.4.mlp.linear_fc1.bias
+    	module.decoder.layers.4.self_attention.linear_proj.bias
+    	module.decoder.layers.3.mlp.linear_fc1.bias
+    	module.decoder.layers.3.self_attention.linear_proj.bias
+    	module.decoder.layers.2.mlp.linear_fc1.bias
+    	module.decoder.layers.2.self_attention.linear_proj.bias
+    	module.decoder.layers.0.mlp.linear_fc1.weight
+    	module.decoder.layers.0.self_attention.linear_qkv.bias
+    	module.decoder.final_layernorm.bias
+    	module.decoder.layers.5.pre_mlp_layernorm.weight
+    	module.decoder.layers.5.input_layernorm.weight
+    	module.decoder.layers.4.pre_mlp_layernorm.weight
+    	module.decoder.layers.4.input_layernorm.weight
+    	module.decoder.layers.3.pre_mlp_layernorm.weight
+    	module.decoder.layers.3.input_layernorm.weight
+    	module.decoder.layers.2.pre_mlp_layernorm.weight
+    	module.embedding.word_embeddings.weight
+[NeMo I 2025-06-19 11:52:05 utils:532] Setting up optimizer with config OptimizerConfig(optimizer='adam', lr=0.0006, min_lr=None, decoupled_lr=None, decoupled_min_lr=None, weight_decay=0.01, fp16=False, bf16=True, params_dtype=torch.float32, use_precision_aware_optimizer=False, main_grads_dtype=torch.float32, main_params_dtype=torch.float32, exp_avg_dtype=torch.float32, exp_avg_sq_dtype=torch.float32, loss_scale=None, initial_loss_scale=4294967296, min_loss_scale=1.0, loss_scale_window=1000, hysteresis=2, adam_beta1=0.9, adam_beta2=0.999, adam_eps=1e-08, sgd_momentum=0.9, use_distributed_optimizer=False, overlap_param_gather_with_optimizer_step=False, optimizer_cpu_offload=False, optimizer_offload_fraction=0.0, use_torch_optimizer_for_cpu_offload=False, overlap_cpu_optimizer_d2h_h2d=False, pin_cpu_grads=True, pin_cpu_params=True, clip_grad=1.0, log_num_zeros_in_grad=False, barrier_with_L1_time=False, timers=None, config_logger_dir='')
