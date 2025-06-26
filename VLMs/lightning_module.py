@@ -3,43 +3,96 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
+from transformers.trainer import get_parameter_names
+from transformers.trainer_utils import ALL_LAYERNORM_LAYERS
 
-class VLMModule(pl.LightningModule):
-    def __init__(self, model, tokenizer=None, lr=1e-4):
+class LLaVALitModule(pl.LightningModule):
+    def __init__(self, model, training_args, tokenizer=None):
         super().__init__()
         self.model = model
-        self.tokenizer = tokenizer  # optional
-        self.lr = lr
+        self.tokenizer = tokenizer
+        self.args = training_args
 
-    def forward(self, images, texts):
-        return self.model(images, texts)
+        # For saving model hyperparameters
+        self.save_hyperparameters(ignore=["model", "tokenizer"])
+
+    def forward(self, **batch):
+        return self.model(**batch)
 
     def training_step(self, batch, batch_idx):
-        images, texts, labels = batch
-        outputs = self(images, texts)
-        loss = F.cross_entropy(outputs, labels)
-        self.log("train_loss", loss)
+        outputs = self(**batch)
+        loss = outputs.loss if hasattr(outputs, "loss") else outputs["loss"]
+        self.log("train_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        images, texts, labels = batch
-        outputs = self(images, texts)
-        loss = F.cross_entropy(outputs, labels)
-        acc = (outputs.argmax(dim=1) == labels).float().mean()
+        outputs = self(**batch)
+        loss = outputs.loss if hasattr(outputs, "loss") else outputs["loss"]
         self.log("val_loss", loss, prog_bar=True)
-        self.log("val_acc", acc, prog_bar=True)
-
-    def test_step(self, batch, batch_idx):
-        pass
-
-    def on_train_epoch_end(self):
-        return super().on_train_epoch_end()
-    
-    def on_validation_epoch_end(self):
-        return super().on_validation_epoch_end()
-    
-    def on_test_epoch_end(self):
-        return super().on_test_epoch_end()
+        return loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.lr)
+        opt_model = self.model
+        decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+
+        projector_parameters = [
+            name for name, _ in opt_model.named_parameters() if "mm_projector" in name
+        ]
+
+        if self.args.mm_projector_lr is not None:
+            optimizer_grouped_parameters = [
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters()
+                        if (n in decay_parameters and n not in projector_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters()
+                        if (n not in decay_parameters and n not in projector_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters()
+                        if (n in decay_parameters and n in projector_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                    "lr": self.args.mm_projector_lr,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters()
+                        if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                    "lr": self.args.mm_projector_lr,
+                },
+            ]
+        else:
+            optimizer_grouped_parameters = [
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters()
+                        if (n in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters()
+                        if (n not in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                },
+            ]
+
+        optimizer_cls, optimizer_kwargs = self.args.optimizer_cls_and_kwargs()
+
+        optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+        return optimizer
