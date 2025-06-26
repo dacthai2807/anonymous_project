@@ -92,11 +92,16 @@ checkpoint = ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min")
 trainer = Trainer(
     max_epochs=training_args.num_train_epochs,
     accelerator="gpu",
-    devices=1,
+    devices="auto",  # Use all available GPUs
+    precision="bf16-mixed",  # Equivalent to --bf16 True
     accumulate_grad_batches=training_args.gradient_accumulation_steps,
-    precision=training_args.precision,
     logger=logger,
     callbacks=[checkpoint],
+    use_distributed_sampler=True,
+    # Enable optimizations
+    enable_checkpointing=True,
+    enable_progress_bar=True,
+    enable_model_summary=True,
 )
 
 # Fit
