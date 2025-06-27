@@ -13,6 +13,7 @@ from monai.transforms import (
     RandRotate90,
     ScaleIntensityRange,
     ToTensor,
+    AddChannel,
     Lambda
 )
 import json
@@ -23,7 +24,17 @@ load_npy = Lambda(lambda x: np.load(x))
 from monai.data import CacheDataset
 from PIL import Image
 # def load_with_augment(image_path: str, augment: callable = None):
-    
+
+class MockMonaiDataset(CacheDataset):
+    def __init__(self, 
+                transform: Compose,
+                 image_key: str = "image",
+                 hint_key: str = "hint"):
+        self.transform = transform
+        self.image_key = image_key
+        self.hint_key = hint_key
+
+        self.data 
 class MonaiDataset(CacheDataset):
     def __init__(self, data: List[Dict], transform: Compose, image_key: str = 'images', hint_key: str = 'hint'):
         self.data = data
@@ -53,6 +64,7 @@ class MonaiDataModule(LightningDataModule):
         valid_data: str,
         image_H: int = 512,
         image_W: int = 512,
+        image_D: int = 114,
         micro_batch_size: int = 1,
         global_batch_size: int = 8,
         num_workers: int = 8,
@@ -65,6 +77,7 @@ class MonaiDataModule(LightningDataModule):
         self.valid_data = valid_data
         self.image_H = image_H
         self.image_W = image_W
+        self.image_D = image_D
         self.micro_batch_size = micro_batch_size
         self.global_batch_size = global_batch_size
         self.num_workers = num_workers
@@ -73,8 +86,9 @@ class MonaiDataModule(LightningDataModule):
 
         self.train_transforms = Compose([
             load_npy,  # Load từ file .npy
-            EnsureChannelFirst(),
-            RandSpatialCrop(roi_size=(self.image_H, self.image_W), random_size=False),
+            AddChannel(),
+            # EnsureChannelFirst(),
+            RandSpatialCrop(roi_size=(self.image_D, self.image_H, self.image_W), random_size=False),
             RandAxisFlip(prob=0.75),
             RandRotate90(prob=0.75),
             ScaleIntensityRange(clip=True, a_min=0.0, a_max=255.0, b_min=0.0, b_max=1.0),
@@ -83,8 +97,9 @@ class MonaiDataModule(LightningDataModule):
         
         self.val_transforms = Compose([
             load_npy,
-            EnsureChannelFirst(),
-            RandSpatialCrop(roi_size=(self.image_H, self.image_W), random_size=False),
+            AddChannel(),
+            # EnsureChannelFirst(),
+            RandSpatialCrop(roi_size=(self.image_D, self.image_H, self.image_W), random_size=False),
             RandAxisFlip(prob=0.0),
             RandRotate90(prob=0.0),
             ScaleIntensityRange(clip=True, a_min=0.0, a_max=255.0, b_min=0.0, b_max=1.0),
@@ -167,6 +182,7 @@ def main():
         valid_data = val_data,
         image_H=512,
         image_W=512,
+        image_D=114,
         micro_batch_size=2,
         global_batch_size=4,
         num_workers=2,
