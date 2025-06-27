@@ -138,7 +138,7 @@ class MonaiDataModule(LightningDataModule):
                 hint_key='hint', 
             )
         if stage == 'test' or stage is None:
-            self._test_ds = ACT2Dataset(
+            self._test_ds = MonaiDataset(
                 self.val_tuples, 
                 self.val_transforms,
                 image_key='image', 

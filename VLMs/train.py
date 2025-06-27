@@ -111,4 +111,4 @@ trainer = Trainer(
 )
 
 # Fit
-trainer.fit(lit_model, datamodule=dummy_dm, )
+trainer.fit(lit_model, datamodule=dummy_dm)
