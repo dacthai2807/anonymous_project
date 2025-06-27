@@ -4,7 +4,7 @@ from monai.data import Dataset
 import glob
 from typing import List, Optional, Dict
 from torch.utils.data import DataLoader, Dataset
-from lightning import LightningDataModule
+from pytorch_lightning import LightningDataModule
 from monai.transforms import (
     Compose,
     EnsureChannelFirst,
