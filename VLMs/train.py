@@ -8,6 +8,7 @@ from typing import Dict, Optional, Sequence, List
 
 from llava.build_model import get_model
 from dummy_datamodule import DummyDataModule
+from data_light_module import MultimodalDataModule
 
 
 @dataclass
@@ -88,6 +89,7 @@ lit_model = LLaVALitModule(model=model, training_args=training_args, tokenizer=t
 
 # DataModule
 dummy_dm = DummyDataModule(batch_size=training_args.per_device_train_batch_size)
+data_module = MultimodalDataModule(train_data_path=data_args.data_path,tokenizer=tokenizer)
 
 # Logger + Checkpoint
 # logger = TensorBoardLogger("logs", name="llava")
@@ -111,4 +113,4 @@ trainer = Trainer(
 )
 
 # Fit
-trainer.fit(lit_model, datamodule=dummy_dm)
+trainer.fit(lit_model, datamodule=data_module)
