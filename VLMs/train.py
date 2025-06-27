@@ -90,7 +90,7 @@ lit_model = LLaVALitModule(model=model, training_args=training_args, tokenizer=t
 dummy_dm = DummyDataModule(batch_size=training_args.per_device_train_batch_size)
 
 # Logger + Checkpoint
-logger = TensorBoardLogger("logs", name="llava")
+# logger = TensorBoardLogger("logs", name="llava")
 checkpoint = ModelCheckpoint(monitor="val_loss", save_top_k=1, mode="min")
 
 # Trainer
@@ -100,14 +100,15 @@ trainer = Trainer(
     devices="auto",  # Use all available GPUs
     precision="bf16-mixed",  # Equivalent to --bf16 True
     accumulate_grad_batches=training_args.gradient_accumulation_steps,
-    logger=logger,
+    # logger=logger,
     callbacks=[checkpoint],
     use_distributed_sampler=True,
     # Enable optimizations
     enable_checkpointing=True,
     enable_progress_bar=True,
     enable_model_summary=True,
+    profiler="simple"   
 )
 
 # Fit
-trainer.fit(lit_model, datamodule=dummy_dm)
+trainer.fit(lit_model, datamodule=dummy_dm, )
