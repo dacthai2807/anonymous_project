@@ -46,4 +46,4 @@ deepspeed --num_gpus=4 llava/train/train_mem.py \
     --dataloader_num_workers 8 \
     --lazy_preprocess True \
     --report_to wandb
-
+    

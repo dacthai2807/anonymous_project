@@ -120,13 +120,13 @@ class PerceiverResampler(nn.Module):
     def forward(self, x, return_attn=False):
         """
         Args:
-            x: (b, T, F, v, D)  e.g., (1, 1, D, H*W, C)
+            x: (b, T, F, v, D)  e.g., (b, 1, 1, D * H * W, C)
         Returns:
             - latents_out: (b, T, L, D)
             - attn_map: (b, T, L, N) if return_attn=True
         """
         b, T, F, v, D = x.shape
-        attn_map = None
+        attn_maps = []
 
         # positional embedding (if any)
         if exists(self.frame_embs):
@@ -140,15 +140,23 @@ class PerceiverResampler(nn.Module):
         latents = repeat(self.latents, "n d -> b T n d", b=b, T=T)
 
         for i, (attn, ff) in enumerate(self.layers):
-            if i == 0 and return_attn:
-                latents_new, attn_map = attn(x, latents, return_attn=True)  # attention từ latent đến voxel
+            if return_attn:
+                latents_new, attn_map = attn(x, latents, return_attn=True)
+                attn_maps.append(attn_map)  # (b, T, L, N)
             else:
                 latents_new = attn(x, latents)
 
             latents = latents_new + latents
             latents = ff(latents) + latents
 
-        return (self.norm(latents), attn_map) if return_attn else self.norm(latents)
+        latents = self.norm(latents)
+
+        if return_attn:
+            # average attention map across layers
+            attn_avg = torch.stack(attn_maps).mean(dim=0)  # (b, T, L, N)
+            return latents, attn_avg
+
+        return latents
 
 
 # gated cross attention

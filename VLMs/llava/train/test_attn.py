@@ -808,7 +808,6 @@ def test(attn_implementation=None):
 
         output_dir = training_args.output_dir
         os.makedirs(output_dir, exist_ok=True)
-        cnt = 0
 
         for idx, line in enumerate(tqdm(questions)):
             pet_image_file = line["image"]
@@ -817,7 +816,7 @@ def test(attn_implementation=None):
             pet_image = np.load(os.path.join(data_args.image_folder, pet_image_file))  # (D, H, W)
             ct_image = np.load(os.path.join(data_args.image_folder, ct_image_file))
 
-            pet_tensor = process_image(pet_image)  # (1, C, H, W, D)
+            pet_tensor = process_image(pet_image)  # (C, H, W, D)
             ct_tensor = process_image(ct_image, is_pet=False)
 
             for convo in line["conversations"]:
@@ -857,55 +856,85 @@ def test(attn_implementation=None):
 
             # Run projector with attn
             _, attn_latent2voxel = model.get_projector()(vis_feat, return_attn=True)  # attn: (B, T, 64, D*H*W)
-            attn_latent2voxel = attn_latent2voxel[0, 0]  # (64, D*H*W)
+            attn_latent2voxel = attn_latent2voxel[:, 0]  # (64, D*H*W)
 
             # Get LLM attention to visual tokens
             attn_tensor = torch.stack(outputs.attentions)  # (L, B, H, T, T)
-            attn_mean = attn_tensor.mean(dim=[0, 2])       # (1, T, T)
-            img_token_idx = input_ids[0].tolist().index(IMAGE_TOKEN_INDEX)
-            attn_img = attn_mean[:, -1, img_token_idx: img_token_idx + 64]  # (1, 64)
-            print(attn_mean.shape)
-            print(attn_img.shape)
-            print(attn_latent2voxel.shape)
+            # attn_mean = attn_tensor.mean(dim=[0, 2])       # (1, T, T)
+            # img_token_idx = input_ids[0].tolist().index(IMAGE_TOKEN_INDEX)
+            # attn_img = attn_mean[:, -1, img_token_idx: img_token_idx + 64]  # (1, 64)
+            # print(attn_mean.shape)
+            # print(attn_img.shape)
+            # print(attn_latent2voxel.shape)
 
-            # Chain attention to voxel space
-            attn_voxel = attn_img @ attn_latent2voxel  # (D*H*W,)
-            attn_volume = attn_voxel.to(torch.float32).view(D_, H_, W_).detach().cpu().numpy()
+            # # Chain attention to voxel space
+            # attn_voxel = attn_img @ attn_latent2voxel  # (D*H*W,)
+            # attn_volume = attn_voxel.to(torch.float32).view(D_, H_, W_).detach().cpu().numpy()
+            L, B, H, T, _ = attn_tensor.shape
+            attn = attn_tensor.permute(1, 0, 2, 3, 4)  # (B, L, H, T, T)
+            attn = attn.reshape(B, L * H, T, T)        # (B, L*H, T, T)
+
+            # Tìm index của <image> token cho mỗi sample trong batch
+            img_token_idx = (input_ids == IMAGE_TOKEN_INDEX).nonzero(as_tuple=False)
+            img_token_idx = img_token_idx[:, 1]  # (B,)
+            assert img_token_idx.shape[0] == B
+
+            # Tạo mask để extract visual attention (vectorized trick)
+            arange64 = torch.arange(64, device=attn.device).view(1, 64)  # (1, 64)
+            img_token_idx_expand = img_token_idx.view(B, 1) + arange64   # (B, 64)
+            img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, 64)  # (B, L*H, 64)
+
+            # Gather attn[:, :, -1, img_token_idx:img_token_idx+64] for all samples
+            attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, 64)
+            attn_txt = attn[:, :, -1, :]  # (B, L*H, T)
+
+            r_lh = attn_vis.sum(dim=-1) / (attn_txt.sum(dim=-1) + 1e-6)  # (B, L*H)
+
+            # Lấy top-R heads theo r_lh
+            top_r = 128
+            print(top_r)
+            top_r_vals, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
+
+            # Tạo mask attention weight cho top-R
+            attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, 64))  # (B, R, 64)
+            attn_weights = attn_top.mean(dim=1)  # (B, 64)
+
+            # Compute voxel-level attention
+            attn_voxel = torch.bmm(attn_weights.unsqueeze(1), attn_latent2voxel)  # (B, 1, D*H*W)
+            attn_voxel = attn_voxel.squeeze(1)  # (B, D*H*W)
+            attn_volume_batch = attn_voxel.view(B, D_, H_, W_)
+            attn_volume = attn_volume_batch[0].to(torch.float32).detach().cpu().numpy()
 
             # Interpolate to CT shape
             attn_tensor = torch.tensor(attn_volume).unsqueeze(0).unsqueeze(0)  # (1,1,D,H,W)
             attn_volume_interp = F.interpolate(attn_tensor, size=ct_image.shape, mode='trilinear', align_corners=False).squeeze().cpu().numpy()
 
-            H_ct = ct_image.shape[1] # Chiều thứ 2 của ct_image.shape là chiều cao (H)
+            # Coronal view slicing
+            H_ct = ct_image.shape[1]
+            center_idx = H_ct // 2
+            offsets = [-30, -24, -18, -12, -6, 0, 6, 12, 18, 24]  # 10 slices xung quanh trung tâm
+            slice_indices = [center_idx + o for o in offsets if 0 <= center_idx + o < H_ct]
 
-            # Save overlay - Sửa đổi để vẽ theo Coronal view
-            # Coronal view: Cắt lát dọc theo chiều H (chiều cao)
-            for i, slice_idx in enumerate([H_ct // 2 - 50, H_ct // 2, H_ct // 2 + 50]): # Chọn các slice_idx dọc theo chiều H
-                # Lấy lát cắt CT và attention theo Coronal view
-                # ct_image[D, H, W] -> ct_image[:, slice_idx, :]
+            # Tạo subfolder cho từng case
+            case_dir = os.path.join(output_dir, f"case_{idx:04d}")
+            os.makedirs(case_dir, exist_ok=True)
+
+            for i, slice_idx in enumerate(slice_indices):
                 ct_slice = ct_image[:, slice_idx, :]
                 attn_slice = attn_volume_interp[:, slice_idx, :]
 
-                # Chuẩn hóa và áp dụng colormap cho attention slice
                 attn_norm = (attn_slice - attn_slice.min()) / (attn_slice.max() - attn_slice.min() + 1e-6)
                 attn_colormap = cv2.applyColorMap((attn_norm * 255).astype(np.uint8), cv2.COLORMAP_JET)
 
-                # Chuẩn hóa CT slice và chuyển sang RGB
                 ct_norm = (ct_slice - ct_slice.min()) / (ct_slice.max() - ct_slice.min() + 1e-6)
                 ct_rgb = np.stack([ct_norm] * 3, axis=-1)
                 ct_rgb = (ct_rgb * 255).astype(np.uint8)
 
-                # Tạo overlay
                 overlay = cv2.addWeighted(ct_rgb, 0.6, attn_colormap, 0.4, 0)
-                cv2.imwrite(f"{output_dir}/attn_coronal_vis_{idx}_{i}.png", overlay)
+                cv2.imwrite(os.path.join(case_dir, f"attn_coronal_slice_{i:02d}.png"), overlay)
 
-            # Log GT text
-            with open(f"{output_dir}/gt_text_{idx}.txt", "w", encoding="utf-8") as f:
+            with open(os.path.join(case_dir, "gt.txt"), "w", encoding="utf-8") as f:
                 f.write(gt.strip())
-
-            cnt += 1
-            if cnt == 10:
-                break
 
     
 if __name__ == "__main__":

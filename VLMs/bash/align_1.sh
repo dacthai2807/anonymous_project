@@ -6,7 +6,7 @@
 
 # MODEL_VERSION=vicuna-v1-3-7b
 # MODEL_VERSION=llama-2-7b-chat
-export PYTHONPATH=/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs:$PYTHONPATH
+export PYTHONPATH=/home/thaind/anonymous_project/VLMs:$PYTHONPATH
 # MODEL_VERSION=llava-med-v1.5-mistral-7b
 
 ########### DO NOT CHANGE ###########
@@ -14,24 +14,26 @@ export PYTHONPATH=/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViRe
 PROMPT_VERSION=v1
 ########### DO NOT CHANGE ###########
 
-deepspeed llava/train/train_mem.py \
+export CUDA_VISIBLE_DEVICES=1
+
+deepspeed --num_gpus=1 llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
-    --model_name_or_path /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/MultimodalFM/llava-med-v1.5-mistral-7b \
+    --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
     --version $PROMPT_VERSION \
     --type PET/CT \
-    --data_path /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/align_train.json \
-    --eval_data_path /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/align_val.json \
-    --image_folder /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed \
-    --vision_tower /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/petct_emb/ctvit.89000.pt \
+    --data_path /workdir/radish/PET-CT/PET-CT-report/pretrain_data/single_turn/align_train.json \
+    --eval_data_path /workdir/radish/PET-CT/PET-CT-report/pretrain_data/single_turn/align_val.json \
+    --image_folder /workdir/radish/PET-CT/PET-CT-report \
+    --vision_tower /workdir/radish/PET-CT/PET-CT-report/ckpt/petct_emb/ctvit.89000.pt \
     --tune_mm_mlp_adapter True \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir /home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/align_perceiver/ctvit_llavamed \
+    --output_dir ./checkpoints/align_perceiver_reg/ctvit_llavamed \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 1 \
     --eval_strategy "epoch" \
     --save_strategy "epoch" \

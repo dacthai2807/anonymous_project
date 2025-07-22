@@ -43,7 +43,7 @@ import wandb
 wandb.login(key='c0bf463d253eb9147fbe555216398f2838fe517c')
 wandb.init(
     project="VLM",
-    name="CTViT_LLaVAMed_lora_perceiver",   
+    name="CTViT_LLaVAMed_align_reg",   
     entity="dacthai2807"
 )
 

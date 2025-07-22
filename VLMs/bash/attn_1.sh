@@ -21,23 +21,23 @@ MODEL_VERSION=llava-med-v1.5-mistral-7b
 # --data_path /home/user01/aiotlab/thaind/data_desc_conv_train.json \
 # --eval_data_path /home/user01/aiotlab/thaind/data_desc_conv_test.json \
     # --pretrain_mm_mlp_adapter /home/user01/aiotlab/thaind/LLaVA/checkpoints/ctvit_llavamed-llava-med-v1.5-mistral-7b-pretrain-1epochs/mm_projector.bin \
-deepspeed --master_port=29505 llava/train/test_attn.py \
+deepspeed --master_port=29505 --num_gpus=1 llava/train/test_attn.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True \
-    --model_name_or_path /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/MultimodalFM/llava-med-v1.5-mistral-7b \
+    --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
     --version $PROMPT_VERSION \
     --type PET/CT \
-    --image_folder /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed \
-    --vision_tower /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/petct_emb/ctvit.89000.pt \
-    --pretrain_mm_mlp_adapter /home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/lora_perceiver/ctvit_llavamed_lora/checkpoint-5556/mm_projector.bin \
-    --lora_path /home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/lora_perceiver/ctvit_llavamed_lora/checkpoint-5556 \
-    --question_file /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/align_test.json \
+    --image_folder /workdir/radish/PET-CT/PET-CT-report \
+    --vision_tower /workdir/radish/PET-CT/PET-CT-report/ckpt/petct_emb/ctvit.89000.pt \
+    --pretrain_mm_mlp_adapter /workdir/radish/PET-CT/PET-CT-report/ckpt/checkpoint-5556/mm_projector.bin \
+    --lora_path /workdir/radish/PET-CT/PET-CT-report/ckpt/checkpoint-5556 \
+    --question_file /workdir/radish/PET-CT/PET-CT-report/pretrain_data/single_turn/align_train.json \
     --temperature 0.5 \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./infer/attn/ctvit_llavamed/test \
+    --output_dir ./infer/attn_3/ctvit_llavamed/train \
     --num_train_epochs 10 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

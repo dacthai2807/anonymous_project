@@ -19,7 +19,7 @@ class PETCTFusion(nn.Module):
             heads=8
         )
 
-        pet_ckpt = '/home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/pet_emb/ctvit.76000.pt'
+        pet_ckpt = '/workdir/radish/PET-CT/PET-CT-report/ckpt/pet_emb/ctvit.76000.pt'
         checkpoint = torch.load(pet_ckpt, map_location='cpu')
         from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         consume_prefix_in_state_dict_if_present(checkpoint, prefix="module.")
@@ -42,7 +42,7 @@ class PETCTFusion(nn.Module):
             heads=8
         )
 
-        ct_ckpt = '/home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/ct_emb/ctvit.76000.pt'
+        ct_ckpt = '/workdir/radish/PET-CT/PET-CT-report/ckpt/ct_emb/ctvit.76000.pt'
         checkpoint = torch.load(ct_ckpt, map_location='cpu')
         from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         consume_prefix_in_state_dict_if_present(checkpoint, prefix="module.")
