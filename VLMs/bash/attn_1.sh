@@ -35,7 +35,7 @@ deepspeed --master_port=29505 --num_gpus=1 llava/train/test_attn.py \
     --temperature 0.5 \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
-    --mm_use_im_patch_token False \
+    --mm_use_im_patch_token False \xz   Q1  
     --bf16 True \
     --output_dir ./infer/attn_3/ctvit_llavamed/train \
     --num_train_epochs 10 \

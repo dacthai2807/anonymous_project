@@ -301,7 +301,7 @@ class LLaVATrainer(Trainer):
             return loss_mb.reduce_mean().detach().to(self.args.device)
 
         with self.compute_loss_context_manager():
-            loss, llm_loss, align_loss = self.compute_loss(model, inputs, num_items_in_batch=num_items_in_batch)
+            loss, llm_loss, align_loss, weighted_loss = self.compute_loss(model, inputs, num_items_in_batch=num_items_in_batch)
 
         del inputs
         if (
@@ -325,7 +325,7 @@ class LLaVATrainer(Trainer):
             else:
                 torch.cuda.empty_cache()
                 
-        self.log({"train/llm_loss": llm_loss.item(), "train/align_loss": align_loss.item()})
+        self.log({"llm_loss": llm_loss.item(), "align_loss": align_loss.item(), "weighted_loss": weighted_loss.item()})
 
         kwargs = {}
 
@@ -353,6 +353,111 @@ class LLaVATrainer(Trainer):
 
             return loss.detach()
         
+    def prediction_step(
+        self,
+        model: nn.Module,
+        inputs: dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """
+        Perform an evaluation step on `model` using `inputs`.
+
+        Subclass and override to inject custom behavior.
+
+        Args:
+            model (`nn.Module`):
+                The model to evaluate.
+            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument `labels`. Check your model's documentation for all accepted arguments.
+            prediction_loss_only (`bool`):
+                Whether or not to return the loss only.
+            ignore_keys (`List[str]`, *optional*):
+                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
+                gathering predictions.
+
+        Return:
+            Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
+            logits and labels (each being optional).
+        """
+        has_labels = False if len(self.label_names) == 0 else all(inputs.get(k) is not None for k in self.label_names)
+        # For CLIP-like models capable of returning loss values.
+        # If `return_loss` is not specified or being `None` in `inputs`, we check if the default value of `return_loss`
+        # is `True` in `model.forward`.
+        return_loss = inputs.get("return_loss", None)
+        if return_loss is None:
+            return_loss = self.can_return_loss
+        loss_without_labels = True if len(self.label_names) == 0 and return_loss else False
+
+        inputs = self._prepare_inputs(inputs)
+        if ignore_keys is None:
+            if hasattr(self.model, "config"):
+                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
+            else:
+                ignore_keys = []
+
+        # labels may be popped when computing the loss (label smoothing for instance) so we grab them first.
+        if has_labels or loss_without_labels:
+            labels = nested_detach(tuple(inputs.get(name) for name in self.label_names))
+            if len(labels) == 1:
+                labels = labels[0]
+        else:
+            labels = None
+
+        with torch.no_grad():
+            if is_sagemaker_mp_enabled():
+                raw_outputs = smp_forward_only(model, inputs)
+                if has_labels or loss_without_labels:
+                    if isinstance(raw_outputs, dict):
+                        loss_mb = raw_outputs["loss"]
+                        logits_mb = tuple(v for k, v in raw_outputs.items() if k not in ignore_keys + ["loss"])
+                    else:
+                        loss_mb = raw_outputs[0]
+                        logits_mb = raw_outputs[1:]
+
+                    loss = loss_mb.reduce_mean().detach().cpu()
+                    logits = smp_nested_concat(logits_mb)
+                else:
+                    loss = None
+                    if isinstance(raw_outputs, dict):
+                        logits_mb = tuple(v for k, v in raw_outputs.items() if k not in ignore_keys)
+                    else:
+                        logits_mb = raw_outputs
+                    logits = smp_nested_concat(logits_mb)
+            else:
+                if has_labels or loss_without_labels:
+                    with self.compute_loss_context_manager():
+                        total_loss, llm_loss, align_loss, weighted_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+                        loss = total_loss.mean().detach()
+
+                    if isinstance(outputs, dict):
+                        logits = tuple(v for k, v in outputs.items() if k not in ignore_keys + ["loss"])
+                    else:
+                        logits = outputs[1:]
+                else:
+                    loss = None
+                    with self.compute_loss_context_manager():
+                        outputs = model(**inputs)
+                    if isinstance(outputs, dict):
+                        logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
+                    else:
+                        logits = outputs
+                    # TODO: this needs to be fixed and made cleaner later.
+                    if self.args.past_index >= 0:
+                        self._past = outputs[self.args.past_index - 1]
+
+        if prediction_loss_only:
+            return (loss, None, None)
+
+        logits = nested_detach(logits)
+        if len(logits) == 1:
+            logits = logits[0]
+
+        return (loss, logits, labels)
+        
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
@@ -371,12 +476,14 @@ class LLaVATrainer(Trainer):
         outputs = model(**inputs, output_attentions=True)
         pet_tensor = inputs["images"]["PET"]
         ct_tensor = inputs["images"]["CT"]
-        vis_feat = model.get_vision_tower()(pet_tensor, ct_tensor)
+        
+        model_ = model.module if hasattr(model, "module") else model
+        vis_feat = model_.get_vision_tower()(pet_tensor, ct_tensor)
         
         B, D_, H_, W_, C = vis_feat.shape
 
         # Run projector with attn
-        _, attn_latent2voxel = model.get_projector()(vis_feat, return_attn=True)  # attn: (B, 1, 64, D*H*W)
+        _, attn_latent2voxel = model_.get_projector()(vis_feat, return_attn=True)  # attn: (B, 1, 64, D*H*W)
         attn_latent2voxel = attn_latent2voxel[:, 0]  # (B, 64, D*H*W)
 
         # Get LLM attention to visual tokens
@@ -401,6 +508,7 @@ class LLaVATrainer(Trainer):
         attn_txt = attn[:, :, -1, :]  # (B, L*H, T)
 
         r_lh = attn_vis.sum(dim=-1) / (attn_txt.sum(dim=-1) + 1e-6)  # (B, L*H)
+        weighted_loss = ((1.0 - r_lh.mean(dim=-1)) ** 2).mean()
 
         # Lấy top-R heads theo r_lh
         top_r = 128
@@ -412,19 +520,27 @@ class LLaVATrainer(Trainer):
 
         # Compute voxel-level attention
         attn_voxel = torch.bmm(attn_weights.unsqueeze(1), attn_latent2voxel)  # (B, 1, D*H*W)
-        attn_voxel = attn_voxel.squeeze(1)  # (B, D*H*W)
-        
-        pet_tensor_resized = F.interpolate(
-            pet_tensor,  # (B, 1, D, H, W)
-            size=(D_, H_, W_),        # đích đến
-            mode='trilinear',
-            align_corners=False
-        )
-        
-        pet_mask = (pet_tensor_resized >= 0.5).float()  # (B, 1, D_, H_, W_)
-        pet_mask = pet_mask.view(B, D_ * H_ * W_) 
-        
-        align_loss = self.compute_alignment_loss(attn_voxel, pet_mask)
+        attn_voxel_3d = attn_voxel.view(B, 1, D_, H_, W_)
+
+        _, _, D, H, W = pet_tensor.shape
+        # Interpolate lên đúng shape PET gốc
+        attn_voxel_up = F.interpolate(
+            attn_voxel_3d, size=(D, H, W), mode='trilinear', align_corners=False
+        )  # (B, 1, D, H, W)
+
+        # Flatten để tính alignment loss
+        attn_voxel_up = attn_voxel_up.view(B, D * H * W)
+        attn_voxel_up = attn_voxel_up / (attn_voxel_up.sum(dim=1, keepdim=True) + 1e-6)
+
+        pet_mask = (pet_tensor > 0.2).float()  # (B, 1, D, H, W)
+
+        # Flatten
+        pet_mask = pet_mask.view(B, D * H * W)
+
+        align_loss = self.compute_alignment_loss(attn_voxel_up, pet_mask)
+
+        print("attn_voxel stats:", attn_voxel_up.mean().item(), attn_voxel_up.min().item(), attn_voxel_up.max().item())
+        print("pet_mask stats:", pet_mask.mean().item(), pet_mask.min().item(), pet_mask.max().item())
         
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
@@ -460,6 +576,9 @@ class LLaVATrainer(Trainer):
         ):
             loss *= self.accelerator.num_processes
 
-        total_loss = loss + 0.1 * align_loss
+        total_loss = loss + 0.1 * align_loss + 0.1 * weighted_loss
 
-        return (total_loss, outputs) if return_outputs else total_loss, loss, align_loss
+        if return_outputs:
+            return total_loss, loss, align_loss, weighted_loss, outputs 
+        else:
+            return total_loss, loss, align_loss, weighted_loss
