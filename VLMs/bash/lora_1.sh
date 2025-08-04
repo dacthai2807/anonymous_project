@@ -23,7 +23,7 @@ MODEL_VERSION=llava-med-v1.5-mistral-7b
 
 # --pretrained_lora_path /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/MultimodalFM/adaptive_cosmos_llavamed/lora/checkpoint-1740 \
 
-deepspeed --num_gpus=1 llava/train/train_mem.py \
+deepspeed --num_gpus=1 --master_port=29503 llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True \
     --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
@@ -40,10 +40,10 @@ deepspeed --num_gpus=1 llava/train/train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./checkpoints/per_reg_2loss/ctvit_llavamed_lora \
+    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss \
     --num_train_epochs 20 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
     --gradient_accumulation_steps 1 \
     --eval_strategy "epoch" \
     --save_strategy "epoch" \

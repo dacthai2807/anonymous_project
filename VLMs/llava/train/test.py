@@ -37,6 +37,7 @@ from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
 import os 
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 SERVER = 'llava1'
 

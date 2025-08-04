@@ -30,33 +30,74 @@ class SimpleResBlock(nn.Module):
         return x + self.proj(x)
     
     
-class Resampler(nn.Module):
-    def __init__(self, embedding_dim=4096, vis_dim=512, perceiver_num=64):
-        super().__init__()
-        self.perceiver = PerceiverResampler(dim=vis_dim, num_latents=perceiver_num)
-        self.fc = nn.Linear(vis_dim, embedding_dim)
+# class Resampler(nn.Module):
+#     def __init__(self, embedding_dim=4096, vis_dim=512, perceiver_num=64):
+#         super().__init__()
+#         self.perceiver = PerceiverResampler(dim=vis_dim, num_latents=perceiver_num)
+#         self.fc = nn.Linear(vis_dim, embedding_dim)
         
-    def forward(self, x, return_attn=False):
-        B, D, H, W, C = x.shape
-        x = x.view(B, 1, 1, D * H * W, C)
+#     def forward(self, x, return_attn=False):
+#         B, D, H, W, C = x.shape
+#         x = x.view(B, 1, 1, D * H * W, C)
         
-        if return_attn:
-            x, attn = self.perceiver(x, return_attn)
-        else:
-            x = self.perceiver(x, return_attn)
+#         if return_attn:
+#             x, attn = self.perceiver(x, return_attn)
+#         else:
+#             x = self.perceiver(x, return_attn)
             
-        x = x.view(B, -1, x.shape[3])
+#         x = x.view(B, -1, x.shape[3])
+#         x = self.fc(x)
+        
+#         if return_attn:
+#             return x, attn
+#         return x 
+    
+class Resampler(nn.Module):
+    def __init__(self, embedding_dim=4096, vis_dim=512, stride=(2, 3, 3)):
+        super().__init__()
+        
+        # Conv3D giảm kích thước D,H,W
+        self.conv3d = nn.Conv3d(
+            in_channels=vis_dim, 
+            out_channels=vis_dim*4, 
+            kernel_size=(3, 3, 3), 
+            stride=stride, 
+            padding=1
+        )
+        
+        # Linear projection sang embedding_dim cho LLM
+        self.fc = nn.Linear(vis_dim*4, embedding_dim)
+        
+    def forward(self, x):
+        """
+        Args:
+            x: (B, D, H, W, C) - Visual embedding từ CLIP
+        Returns:
+            out: (B, N, embedding_dim) - N là số tokens sau Conv3D flatten
+        """
+        B, D, H, W, C = x.shape
+        
+        # Đổi thành (B, C, D, H, W) cho Conv3D
+        x = x.permute(0, 4, 1, 2, 3)
+        
+        # Conv3D downsample
+        x = self.conv3d(x)  # (B, vis_dim*4, D', H', W')
+        B, C_conv, D_new, H_new, W_new = x.shape
+        
+        # Flatten tokens: (B, N, C_conv)
+        x = x.view(B, C_conv, -1).transpose(1, 2)
+        
+        # Linear projection: (B, N, embedding_dim)
         x = self.fc(x)
         
-        if return_attn:
-            return x, attn
-        return x 
+        return x
 
 def build_vision_projector(config, delay_load=False, **kwargs):
     projector_type = getattr(config, 'mm_projector_type', 'linear')
     print(projector_type, config.mm_hidden_size, config.hidden_size)
     if projector_type == 'linear':
-        return Resampler(embedding_dim=config.hidden_size, vis_dim=config.mm_hidden_size, perceiver_num=64)
+        return Resampler(embedding_dim=config.hidden_size, vis_dim=config.mm_hidden_size)
+        # return Resampler(embedding_dim=config.hidden_size, vis_dim=config.mm_hidden_size, perceiver_num=64)
         # return nn.Linear(config.mm_hidden_size, config.hidden_size)
 
     mlp_gelu_match = re.match(r'^mlp(\d+)x_gelu$', projector_type)

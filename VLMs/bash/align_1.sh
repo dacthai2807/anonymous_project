@@ -14,8 +14,6 @@ export PYTHONPATH=/home/thaind/anonymous_project/VLMs:$PYTHONPATH
 PROMPT_VERSION=v1
 ########### DO NOT CHANGE ###########
 
-export CUDA_VISIBLE_DEVICES=1
-
 deepspeed --num_gpus=1 llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
@@ -30,10 +28,10 @@ deepspeed --num_gpus=1 llava/train/train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./checkpoints/align_perceiver_reg/ctvit_llavamed \
+    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/align_2loss_conv \
     --num_train_epochs 5 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
     --gradient_accumulation_steps 1 \
     --eval_strategy "epoch" \
     --save_strategy "epoch" \

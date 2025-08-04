@@ -481,10 +481,8 @@ class LLaVATrainer(Trainer):
         vis_feat = model_.get_vision_tower()(pet_tensor, ct_tensor)
         
         B, D_, H_, W_, C = vis_feat.shape
-
-        # Run projector with attn
-        _, attn_latent2voxel = model_.get_projector()(vis_feat, return_attn=True)  # attn: (B, 1, 64, D*H*W)
-        attn_latent2voxel = attn_latent2voxel[:, 0]  # (B, 64, D*H*W)
+        D_conv, H_conv, W_conv = D_ / 2, H_ / 3, W_ / 3 # stride = (2, 3, 3)
+        N = D_conv * H_conv * W_conv
 
         # Get LLM attention to visual tokens
         attn_tensor = torch.stack(outputs.attentions)  # (L, B, H, T, T)
@@ -499,12 +497,12 @@ class LLaVATrainer(Trainer):
         assert img_token_idx.shape[0] == B
 
         # Tạo mask để extract visual attention (vectorized trick)
-        arange64 = torch.arange(64, device=attn.device).view(1, 64)  # (1, 64)
-        img_token_idx_expand = img_token_idx.view(B, 1) + arange64   # (B, 64)
-        img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, 64)  # (B, L*H, 64)
+        arangeN = torch.arange(N, device=attn.device).view(1, N)  # (1, N)
+        img_token_idx_expand = img_token_idx.view(B, 1) + arangeN   # (B, N)
+        img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, N)  # (B, L*H, N)
 
-        # Gather attn[:, :, -1, img_token_idx:img_token_idx+64] for all samples
-        attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, 64)
+        # Gather attn[:, :, -1, img_token_idx:img_token_idx+N] for all samples
+        attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, N)
         attn_txt = attn[:, :, -1, :]  # (B, L*H, T)
 
         r_lh = attn_vis.sum(dim=-1) / (attn_txt.sum(dim=-1) + 1e-6)  # (B, L*H)
@@ -512,15 +510,14 @@ class LLaVATrainer(Trainer):
 
         # Lấy top-R heads theo r_lh
         top_r = 128
-        top_r_vals, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
+        _, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
 
         # Tạo mask attention weight cho top-R
-        attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, 64))  # (B, R, 64)
-        attn_weights = attn_top.mean(dim=1)  # (B, 64)
+        attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, N))  # (B, R, N)
+        attn_weights = attn_top.mean(dim=1)  # (B, N)
 
         # Compute voxel-level attention
-        attn_voxel = torch.bmm(attn_weights.unsqueeze(1), attn_latent2voxel)  # (B, 1, D*H*W)
-        attn_voxel_3d = attn_voxel.view(B, 1, D_, H_, W_)
+        attn_voxel_3d = attn_weights.view(B, 1, D_conv, H_conv, W_conv)
 
         _, _, D, H, W = pet_tensor.shape
         # Interpolate lên đúng shape PET gốc
@@ -576,9 +573,135 @@ class LLaVATrainer(Trainer):
         ):
             loss *= self.accelerator.num_processes
 
-        total_loss = loss + 0.1 * align_loss + 0.1 * weighted_loss
+        total_loss = loss + 0.1 * align_loss # + 0.3 * weighted_loss
 
         if return_outputs:
             return total_loss, loss, align_loss, weighted_loss, outputs 
         else:
             return total_loss, loss, align_loss, weighted_loss
+        
+    # def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+    #     """
+    #     How the loss is computed by Trainer. By default, all models return the loss in the first element.
+
+    #     Subclass and override for custom behavior.
+    #     """
+    #     if (self.label_smoother is not None or self.compute_loss_func is not None) and "labels" in inputs:
+    #         labels = inputs.pop("labels")
+    #     else:
+    #         labels = None
+    #     if self.model_accepts_loss_kwargs:
+    #         loss_kwargs = {}
+    #         if num_items_in_batch is not None:
+    #             loss_kwargs["num_items_in_batch"] = num_items_in_batch
+    #         inputs = {**inputs, **loss_kwargs}
+    #     outputs = model(**inputs, output_attentions=True)
+    #     pet_tensor = inputs["images"]["PET"]
+    #     ct_tensor = inputs["images"]["CT"]
+        
+    #     model_ = model.module if hasattr(model, "module") else model
+    #     vis_feat = model_.get_vision_tower()(pet_tensor, ct_tensor)
+        
+    #     B, D_, H_, W_, C = vis_feat.shape
+
+    #     # Run projector with attn
+    #     _, attn_latent2voxel = model_.get_projector()(vis_feat, return_attn=True)  # attn: (B, 1, 64, D*H*W)
+    #     attn_latent2voxel = attn_latent2voxel[:, 0]  # (B, 64, D*H*W)
+
+    #     # Get LLM attention to visual tokens
+    #     attn_tensor = torch.stack(outputs.attentions)  # (L, B, H, T, T)
+    #     L, B, H, T, _ = attn_tensor.shape
+    #     attn = attn_tensor.permute(1, 0, 2, 3, 4)  # (B, L, H, T, T)
+    #     attn = attn.reshape(B, L * H, T, T)        # (B, L*H, T, T)
+
+    #     # Tìm index của <image> token cho mỗi sample trong batch
+    #     input_ids = inputs["input_ids"]
+    #     img_token_idx = (input_ids == IMAGE_TOKEN_INDEX).nonzero(as_tuple=False)
+    #     img_token_idx = img_token_idx[:, 1]  # (B,)
+    #     assert img_token_idx.shape[0] == B
+
+    #     # Tạo mask để extract visual attention (vectorized trick)
+    #     arange64 = torch.arange(64, device=attn.device).view(1, 64)  # (1, 64)
+    #     img_token_idx_expand = img_token_idx.view(B, 1) + arange64   # (B, 64)
+    #     img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, 64)  # (B, L*H, 64)
+
+    #     # Gather attn[:, :, -1, img_token_idx:img_token_idx+64] for all samples
+    #     attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, 64)
+    #     attn_txt = attn[:, :, -1, :]  # (B, L*H, T)
+
+    #     r_lh = attn_vis.sum(dim=-1) / (attn_txt.sum(dim=-1) + 1e-6)  # (B, L*H)
+    #     weighted_loss = ((1.0 - r_lh.mean(dim=-1)) ** 2).mean()
+
+    #     # Lấy top-R heads theo r_lh
+    #     top_r = 128
+    #     _, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
+
+    #     # Tạo mask attention weight cho top-R
+    #     attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, 64))  # (B, R, 64)
+    #     attn_weights = attn_top.mean(dim=1)  # (B, 64)
+
+    #     # Compute voxel-level attention
+    #     # attn_voxel = attn_latent2voxel.mean(dim=1)
+    #     attn_voxel = torch.bmm(attn_weights.unsqueeze(1), attn_latent2voxel)  # (B, 1, D*H*W)
+    #     attn_voxel_3d = attn_voxel.view(B, 1, D_, H_, W_)
+
+    #     _, _, D, H, W = pet_tensor.shape
+    #     # Interpolate lên đúng shape PET gốc
+    #     attn_voxel_up = F.interpolate(
+    #         attn_voxel_3d, size=(D, H, W), mode='trilinear', align_corners=False
+    #     )  # (B, 1, D, H, W)
+
+    #     # Flatten để tính alignment loss
+    #     attn_voxel_up = attn_voxel_up.view(B, D * H * W)
+    #     attn_voxel_up = attn_voxel_up / (attn_voxel_up.sum(dim=1, keepdim=True) + 1e-6)
+
+    #     pet_mask = (pet_tensor > 0.2).float()  # (B, 1, D, H, W)
+
+    #     # Flatten
+    #     pet_mask = pet_mask.view(B, D * H * W)
+
+    #     align_loss = self.compute_alignment_loss(attn_voxel_up, pet_mask)
+
+    #     print("attn_voxel stats:", attn_voxel_up.mean().item(), attn_voxel_up.min().item(), attn_voxel_up.max().item())
+    #     print("pet_mask stats:", pet_mask.mean().item(), pet_mask.min().item(), pet_mask.max().item())
+        
+    #     # Save past state if it exists
+    #     # TODO: this needs to be fixed and made cleaner later.
+    #     if self.args.past_index >= 0:
+    #         self._past = outputs[self.args.past_index]
+
+    #     if labels is not None:
+    #         unwrapped_model = self.accelerator.unwrap_model(model)
+    #         if _is_peft_model(unwrapped_model):
+    #             model_name = unwrapped_model.base_model.model._get_name()
+    #         else:
+    #             model_name = unwrapped_model._get_name()
+    #         # User-defined compute_loss function
+    #         if self.compute_loss_func is not None:
+    #             loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch)
+    #         elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+    #             loss = self.label_smoother(outputs, labels, shift_labels=True)
+    #         else:
+    #             loss = self.label_smoother(outputs, labels)
+    #     else:
+    #         if isinstance(outputs, dict) and "loss" not in outputs:
+    #             raise ValueError(
+    #                 "The model did not return a loss from the inputs, only the following keys: "
+    #                 f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+    #             )
+    #         # We don't use .loss here since the model may return tuples instead of ModelOutput.
+    #         loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+    #     if (
+    #         self.args.average_tokens_across_devices
+    #         and (self.model_accepts_loss_kwargs or self.compute_loss_func)
+    #         and num_items_in_batch is not None
+    #     ):
+    #         loss *= self.accelerator.num_processes
+
+    #     total_loss = loss + 0.05 * align_loss + 0.3 * weighted_loss
+
+    #     if return_outputs:
+    #         return total_loss, loss, align_loss, weighted_loss, outputs 
+    #     else:
+    #         return total_loss, loss, align_loss, weighted_loss

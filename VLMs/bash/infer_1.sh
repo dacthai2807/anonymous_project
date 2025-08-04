@@ -5,7 +5,7 @@
 # Uncomment and set the following variables correspondingly to run this script:
 
 ################## VICUNA ##################
-export PYTHONPATH=/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs:/home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/llava/model/multimodal_encoder:$PYTHONPATH
+export PYTHONPATH=/home/thaind/anonymous_project/VLMs:/home/thaind/anonymous_project/VLMs/llava/model/multimodal_encoder:$PYTHONPATH
 
 PROMPT_VERSION=v1
 MODEL_VERSION=llava-med-v1.5-mistral-7b
@@ -18,26 +18,23 @@ MODEL_VERSION=llava-med-v1.5-mistral-7b
 # PROMPT_VERSION=plain
 ################## LLaMA-2 ##################
 
-# --data_path /home/user01/aiotlab/thaind/data_desc_conv_train.json \
-# --eval_data_path /home/user01/aiotlab/thaind/data_desc_conv_test.json \
-    # --pretrain_mm_mlp_adapter /home/user01/aiotlab/thaind/LLaVA/checkpoints/ctvit_llavamed-llava-med-v1.5-mistral-7b-pretrain-1epochs/mm_projector.bin \
-deepspeed --master_port=29504 llava/train/test.py \
+deepspeed --num_gpus=1 --master_port=29510 llava/train/test.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True \
-    --model_name_or_path /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/MultimodalFM/llava-med-v1.5-mistral-7b \
+    --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
     --version $PROMPT_VERSION \
     --type PET/CT \
-    --image_folder /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed \
-    --vision_tower /home/jovyan/shared/tienhuu060102/data-petct/pretrained_weights/petct_emb/ctvit.89000.pt \
-    --pretrain_mm_mlp_adapter /home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/ctvit_llavamed_lora/checkpoint-2778/mm_projector.bin \
-    --lora_path /home/jovyan/shared/tienhuu060102/data-petct/shared_codes/ViReportGen/VLMs/checkpoints/ctvit_llavamed_lora/checkpoint-2778 \
-    --question_file /home/jovyan/shared/tienhuu060102/data-petct/PET_report_paired_fixed/pretrain_data/single_turn/align_train.json \
+    --image_folder /workdir/radish/PET-CT/PET-CT-report \
+    --vision_tower /workdir/radish/PET-CT/PET-CT-report/ckpt/petct_emb/ctvit.89000.pt \
+    --pretrain_mm_mlp_adapter /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss/checkpoint-19502/mm_projector.bin \
+    --lora_path /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss/checkpoint-19502 \
+    --question_file /workdir/radish/PET-CT/PET-CT-report/pretrain_data/single_turn/align_test.json \
     --temperature 0.5 \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir ./infer/ctvit_llavamed/train \
+    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/infer/lora_2loss/checkpoint-19502/test \
     --num_train_epochs 10 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

@@ -37,15 +37,17 @@ from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
 import os 
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 import wandb
 wandb.login(key='c0bf463d253eb9147fbe555216398f2838fe517c')
 wandb.init(
     project="VLM",
-    name="CTViT_LLaVAMed_align_reg",   
+    name="CTViT_LLaVAMed_align_conv",   
     entity="dacthai2807"
 )
+
+
 
 local_rank = None
 
@@ -1045,7 +1047,6 @@ def train(attn_implementation=None):
     else:
         safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
-
 
 if __name__ == "__main__":
     
