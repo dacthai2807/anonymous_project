@@ -5,7 +5,7 @@
 # Uncomment and set the following variables correspondingly to run this script:
 
 # MODEL_VERSION=vicuna-v1-3-7b
-# MODEL_VERSION=llama-2-7b-chat
+MODEL_VERSION=llama-2-7b-chat
 export PYTHONPATH=/home/thaind/anonymous_project/VLMs:$PYTHONPATH
 # MODEL_VERSION=llava-med-v1.5-mistral-7b
 
@@ -16,7 +16,7 @@ PROMPT_VERSION=v1
 
 deepspeed --num_gpus=1 llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
-    --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
+    --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/pretrained_weights/llm/M3D \
     --version $PROMPT_VERSION \
     --type PET/CT \
     --data_path /workdir/radish/PET-CT/PET-CT-report/pretrain_data/single_turn/align_train.json \
@@ -28,7 +28,7 @@ deepspeed --num_gpus=1 llava/train/train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/align_1loss_conv \
+    --output_dir /workdir/radish/PET-CT/ctvit_m3d/checkpoints/align \
     --num_train_epochs 5 \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \

@@ -11,6 +11,8 @@ import yaml
 import wandb
 import random
 import numpy as np
+import os 
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 model_class = TokenizerModels.CV.value
 config = TokenizerConfigs.CV8x8x8.value
@@ -120,13 +122,13 @@ def train_1_epoch(model, train_loader, val_loader, device, optimizer, loss_L1, l
     return avg_train_loss, avg_val_loss, global_step
 
 def training(cfg):
-    wandb.login(key='your_wandb_api_key')  # 🔁 Đổi thành API key của bạn
-    wandb.init(project="project_name", name='cosmos_continuous', config=cfg)
+    wandb.login(key='c0bf463d253eb9147fbe555216398f2838fe517c')  # 🔁 Đổi thành API key của bạn
+    wandb.init(project="Cosmos", name='cosmos_continuous_ct', entity="dacthai2807", config=cfg)
 
     model = model_class(**config)
-    log_dir = os.path.join("log", cfg["pretrained_path"].split("/")[-2] + "-Custom-Continuous-05032025")
+    log_dir = os.path.join("log", cfg["pretrained_path"].split("/")[-2] + "-Continuous")
     os.makedirs(log_dir, exist_ok=True)
-    logger.add(os.path.join(log_dir, "training_logs_new.log"), rotation="100 MB", level="INFO")
+    logger.add(os.path.join(log_dir, "training_logs.log"), rotation="100 MB", level="INFO")
 
     # Load pretrained weights
     model_weight = torch.jit.load(cfg['pretrained_path'])
@@ -139,8 +141,8 @@ def training(cfg):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(torch.bfloat16).to(device)
 
-    train_loader = get_dataloader(cfg["train"], mode="train", batch_size=8, num_workers=8)
-    val_loader = get_dataloader(cfg["val"], mode="val", batch_size=8, num_workers=8)
+    train_loader = get_dataloader(cfg["train"], mode="train", batch_size=4, num_workers=4)
+    val_loader = get_dataloader(cfg["val"], mode="val", batch_size=4, num_workers=4)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg['lr'], weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["EPOCH"])
@@ -161,7 +163,7 @@ def training(cfg):
         scheduler.step()
 
         # Save checkpoint
-        save_dir = os.path.join(cfg["ckpt"], cfg["pretrained_path"].split("/")[-2] + "-Custom-Continuous-05032025")
+        save_dir = os.path.join(cfg["ckpt"], cfg["pretrained_path"].split("/")[-2] + "-Continuous")
         os.makedirs(save_dir, exist_ok=True)
         model_save_path = os.path.join(save_dir, f"model_epoch_{epoch + 1}.pth")
         torch.save(model.state_dict(), model_save_path)

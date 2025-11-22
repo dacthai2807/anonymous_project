@@ -22,13 +22,13 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=[
             "CV8x8x8-720p",
-            "DV8x16x16-720p",
-            "CI8x8-360p",
-            "CI16x16-360p",
-            "CV4x8x8-360p",
-            "DI8x8-360p",
-            "DI16x16-360p",
-            "DV4x8x8-360p",
+            # "DV8x16x16-720p",
+            # "CI8x8-360p",
+            # "CI16x16-360p",
+            # "CV4x8x8-360p",
+            # "DI8x8-360p",
+            # "DI16x16-360p",
+            # "DV4x8x8-360p",
         ],  # Download all by default
         choices=[
             "CV8x8x8-720p",
@@ -135,11 +135,11 @@ def main(args) -> None:
                 repo_id=repo_id, local_dir=str(local_dir), local_dir_use_symlinks=False, **download_kwargs
             )
 if __name__ == "__main__":
-    # from dotenv import load_dotenv
-    # import os
-    # load_dotenv()
-    # from huggingface_hub import login
-    # hf_token = os.getenv("HUGGINGFACE_TOKEN")
-    # login(hf_token)
+    from dotenv import load_dotenv
+    import os
+    load_dotenv()
+    from huggingface_hub import login
+    hf_token = os.getenv("HUGGINGFACE_TOKEN")
+    login(hf_token)
     args = parse_args()
     main(args)

@@ -39,7 +39,6 @@ def build_vision_tower(vision_tower_cfg, **kwargs):
 
     if 'ctvit' in vision_tower:
         cvit = PETCTFusion()
-        cvit.hidden_size = 512 #294912
         
         # cvit = CTViT(
         #     dim = 512,
@@ -52,7 +51,6 @@ def build_vision_tower(vision_tower_cfg, **kwargs):
         #     dim_head = 32,
         #     heads = 8
         # )
-        # cvit.hidden_size = 294912
         
         vision_tower = getattr(vision_tower_cfg, 'vision_tower', None)
 

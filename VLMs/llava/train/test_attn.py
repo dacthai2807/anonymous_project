@@ -37,6 +37,7 @@ from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
 import os 
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 SERVER = 'llava1'
 
@@ -853,23 +854,11 @@ def test(attn_implementation=None):
             )
             
             B, D_, H_, W_, C = vis_feat.shape
-
-            # Run projector with attn
-            _, attn_latent2voxel = model.get_projector()(vis_feat, return_attn=True)  # attn: (B, T, 64, D*H*W)
-            attn_latent2voxel = attn_latent2voxel[:, 0]  # (64, D*H*W)
+            D_conv, H_conv, W_conv = int(D_ / 2), int(H_ / 3), int(W_ / 3)
+            N = int(D_conv * H_conv * W_conv)
 
             # Get LLM attention to visual tokens
             attn_tensor = torch.stack(outputs.attentions)  # (L, B, H, T, T)
-            # attn_mean = attn_tensor.mean(dim=[0, 2])       # (1, T, T)
-            # img_token_idx = input_ids[0].tolist().index(IMAGE_TOKEN_INDEX)
-            # attn_img = attn_mean[:, -1, img_token_idx: img_token_idx + 64]  # (1, 64)
-            # print(attn_mean.shape)
-            # print(attn_img.shape)
-            # print(attn_latent2voxel.shape)
-
-            # # Chain attention to voxel space
-            # attn_voxel = attn_img @ attn_latent2voxel  # (D*H*W,)
-            # attn_volume = attn_voxel.to(torch.float32).view(D_, H_, W_).detach().cpu().numpy()
             L, B, H, T, _ = attn_tensor.shape
             attn = attn_tensor.permute(1, 0, 2, 3, 4)  # (B, L, H, T, T)
             attn = attn.reshape(B, L * H, T, T)        # (B, L*H, T, T)
@@ -880,34 +869,89 @@ def test(attn_implementation=None):
             assert img_token_idx.shape[0] == B
 
             # Tạo mask để extract visual attention (vectorized trick)
-            arange64 = torch.arange(64, device=attn.device).view(1, 64)  # (1, 64)
-            img_token_idx_expand = img_token_idx.view(B, 1) + arange64   # (B, 64)
-            img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, 64)  # (B, L*H, 64)
+            arangeN = torch.arange(N, device=attn.device).view(1, N)  # (1, N)
+            img_token_idx_expand = img_token_idx.view(B, 1) + arangeN   # (B, N)
+            img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, N)  # (B, L*H, N)
 
-            # Gather attn[:, :, -1, img_token_idx:img_token_idx+64] for all samples
-            attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, 64)
+            # Gather attn[:, :, -1, img_token_idx:img_token_idx+N] for all samples
+            attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, N)
             attn_txt = attn[:, :, -1, :]  # (B, L*H, T)
 
             r_lh = attn_vis.sum(dim=-1) / (attn_txt.sum(dim=-1) + 1e-6)  # (B, L*H)
 
             # Lấy top-R heads theo r_lh
-            top_r = 128
-            print(top_r)
-            top_r_vals, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
+            top_r = 64
+            _, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
 
             # Tạo mask attention weight cho top-R
-            attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, 64))  # (B, R, 64)
-            attn_weights = attn_top.mean(dim=1)  # (B, 64)
+            attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, N))  # (B, R, N)
+            attn_weights = attn_top.mean(dim=1)  # (B, N)
 
             # Compute voxel-level attention
-            attn_voxel = torch.bmm(attn_weights.unsqueeze(1), attn_latent2voxel)  # (B, 1, D*H*W)
-            attn_voxel = attn_voxel.squeeze(1)  # (B, D*H*W)
-            attn_volume_batch = attn_voxel.view(B, D_, H_, W_)
-            attn_volume = attn_volume_batch[0].to(torch.float32).detach().cpu().numpy()
+            attn_voxel_3d = attn_weights.view(B, 1, D_conv, H_conv, W_conv)
 
-            # Interpolate to CT shape
-            attn_tensor = torch.tensor(attn_volume).unsqueeze(0).unsqueeze(0)  # (1,1,D,H,W)
-            attn_volume_interp = F.interpolate(attn_tensor, size=ct_image.shape, mode='trilinear', align_corners=False).squeeze().cpu().numpy()
+            _, _, D, H, W = pet_tensor.shape
+            # Interpolate lên đúng shape PET gốc
+            attn_volume_interp = F.interpolate(
+                attn_voxel_3d, size=(D, H, W), mode='trilinear', align_corners=False
+            )  # (B, 1, D, H, W)
+            
+            # B, D_, H_, W_, C = vis_feat.shape
+
+            # # Run projector with attn
+            # _, attn_latent2voxel = model.get_projector()(vis_feat, return_attn=True)  # attn: (B, T, 64, D*H*W)
+            # attn_latent2voxel = attn_latent2voxel[:, 0]  # (64, D*H*W)
+
+            # # Get LLM attention to visual tokens
+            # attn_tensor = torch.stack(outputs.attentions)  # (L, B, H, T, T)
+            # # attn_mean = attn_tensor.mean(dim=[0, 2])       # (1, T, T)
+            # # img_token_idx = input_ids[0].tolist().index(IMAGE_TOKEN_INDEX)
+            # # attn_img = attn_mean[:, -1, img_token_idx: img_token_idx + 64]  # (1, 64)
+            # # print(attn_mean.shape)
+            # # print(attn_img.shape)
+            # # print(attn_latent2voxel.shape)
+
+            # # # Chain attention to voxel space
+            # # attn_voxel = attn_img @ attn_latent2voxel  # (D*H*W,)
+            # # attn_volume = attn_voxel.to(torch.float32).view(D_, H_, W_).detach().cpu().numpy()
+            # L, B, H, T, _ = attn_tensor.shape
+            # attn = attn_tensor.permute(1, 0, 2, 3, 4)  # (B, L, H, T, T)
+            # attn = attn.reshape(B, L * H, T, T)        # (B, L*H, T, T)
+
+            # # Tìm index của <image> token cho mỗi sample trong batch
+            # img_token_idx = (input_ids == IMAGE_TOKEN_INDEX).nonzero(as_tuple=False)
+            # img_token_idx = img_token_idx[:, 1]  # (B,)
+            # assert img_token_idx.shape[0] == B
+
+            # # Tạo mask để extract visual attention (vectorized trick)
+            # arange64 = torch.arange(64, device=attn.device).view(1, 64)  # (1, 64)
+            # img_token_idx_expand = img_token_idx.view(B, 1) + arange64   # (B, 64)
+            # img_token_idx_expand = img_token_idx_expand.unsqueeze(1).expand(B, L * H, 64)  # (B, L*H, 64)
+
+            # # Gather attn[:, :, -1, img_token_idx:img_token_idx+64] for all samples
+            # attn_vis = torch.gather(attn[:, :, -1, :], 2, img_token_idx_expand)  # (B, L*H, 64)
+            # attn_txt = attn[:, :, -1, :]  # (B, L*H, T)
+
+            # r_lh = attn_vis.sum(dim=-1) / (attn_txt.sum(dim=-1) + 1e-6)  # (B, L*H)
+
+            # # Lấy top-R heads theo r_lh
+            # top_r = 128
+            # print(top_r)
+            # top_r_vals, top_r_idx = torch.topk(r_lh, top_r, dim=-1)  # (B, R)
+
+            # # Tạo mask attention weight cho top-R
+            # attn_top = torch.gather(attn_vis, 1, top_r_idx.unsqueeze(-1).expand(-1, -1, 64))  # (B, R, 64)
+            # attn_weights = attn_top.mean(dim=1)  # (B, 64)
+
+            # # Compute voxel-level attention
+            # attn_voxel = torch.bmm(attn_weights.unsqueeze(1), attn_latent2voxel)  # (B, 1, D*H*W)
+            # attn_voxel = attn_voxel.squeeze(1)  # (B, D*H*W)
+            # attn_volume_batch = attn_voxel.view(B, D_, H_, W_)
+            # attn_volume = attn_volume_batch[0].to(torch.float32).detach().cpu().numpy()
+
+            # # Interpolate to CT shape
+            # attn_tensor = torch.tensor(attn_volume).unsqueeze(0).unsqueeze(0)  # (1,1,D,H,W)
+            # attn_volume_interp = F.interpolate(attn_tensor, size=ct_image.shape, mode='trilinear', align_corners=False).squeeze().cpu().numpy()
 
             # Coronal view slicing
             H_ct = ct_image.shape[1]

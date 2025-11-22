@@ -37,7 +37,7 @@ from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
 import os 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 SERVER = 'llava1'
 
@@ -655,7 +655,8 @@ from tqdm import tqdm
 from llava.conversation import conv_templates
 num_chunks = 1 
 chunk_idx = 0 
-conv_mode = 'llava_v1' 
+# conv_mode = 'llava_v1'
+conv_mode = 'llava_llama_2' 
 num_beams = 1 
 top_p = None
 
@@ -805,6 +806,7 @@ def test(attn_implementation=None):
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
+        model.resize_token_embeddings(len(tokenizer))
         model.to(dtype=torch.bfloat16 if training_args.bf16 else torch.float16, device=training_args.device)
 
         # questions = [json.loads(q) for q in open(os.path.expanduser(question_file), "r")]
@@ -814,7 +816,7 @@ def test(attn_implementation=None):
             
         questions = get_chunk(questions, num_chunks, chunk_idx)
         # answers_file = '/home/jovyan/workspace/cosmos_med.jsonl'
-        answers_file = os.path.join(training_args.output_dir, f"answers.jsonl")
+        answers_file = os.path.join(training_args.output_dir, f"answer.jsonl")
 
         inference_cfg = {
             "temperature": temperature,
@@ -836,11 +838,29 @@ def test(attn_implementation=None):
         print(inference_cfg)
 
         answers_file = os.path.expanduser(answers_file)
-
-        ans_file = open(answers_file, "w")
+        
+        existing_ids = set()
+        if os.path.exists(answers_file):
+            with open(answers_file, "r") as f:
+                for line in f:
+                    try:
+                        record = json.loads(line)
+                        existing_ids.add(record["question_id"])
+                    except Exception:
+                        continue
+            ans_file = open(answers_file, "a")  # append mode
+            print(f"Resume mode: found {len(existing_ids)} existing answers")
+        else:
+            ans_file = open(answers_file, "w")
+            
+        # ans_file = open(answers_file, "w")
 
         for line in tqdm(questions):
             idx = line["id"]
+            if idx in existing_ids:
+                print(f"Skip {idx} (already in file)")
+                continue
+            
             if data_args.type == 'PET/CT':
                 pet_image_file = line["image"]
                 ct_image_file = pet_image_file.replace('images', 'ref_images')
@@ -898,7 +918,12 @@ def test(attn_implementation=None):
                     max_new_tokens=1024,
                     use_cache=True)
 
-            outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            # outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            if torch.is_tensor(output_ids):
+                output_ids = output_ids.long().cpu().tolist()
+
+            clean_ids = [[int(i) for i in seq if 0 <= i < tokenizer.vocab_size] for seq in output_ids]
+            outputs = tokenizer.batch_decode(clean_ids, skip_special_tokens=True)[0].strip()
 
             if random.random() < 0.1:
                 print(f"Prompt: {prompt}")

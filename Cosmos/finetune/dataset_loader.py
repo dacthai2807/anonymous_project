@@ -22,7 +22,9 @@ class CustomDataset(Dataset):
         sample = np.load(npy_path)  # shape: (D_orig, H, W)
         if len(sample.shape) == 4:
             sample = sample.squeeze(0)
-        sample = torch.from_numpy(sample).float() / 32767.0  # (D_orig, H, W)
+        # sample = torch.from_numpy(sample).float() / 32767.0  # (D_orig, H, W)
+        sample = torch.from_numpy(sample).float()
+        sample = (sample - sample.min()) / (sample.max() - sample.min())
         
         sample = sample.unsqueeze(0).unsqueeze(0)
         sample = F.interpolate(sample, size=(self.fix_depth, self.size, self.size), mode='trilinear', align_corners=False)

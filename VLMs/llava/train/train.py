@@ -37,13 +37,13 @@ from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
 import os 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import wandb
 wandb.login(key='c0bf463d253eb9147fbe555216398f2838fe517c')
 wandb.init(
     project="VLM",
-    name="CTViT_LLaVAMed_align_conv",   
+    name="CTViT_M3D_lora_instruct_fix",   
     entity="dacthai2807"
 )
 

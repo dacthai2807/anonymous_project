@@ -33,24 +33,24 @@ deepspeed --num_gpus=1 --master_port=29503 llava/train/train_mem.py \
     --eval_data_path /workdir/radish/PET-CT/PET-CT-report/pretrain_data/single_turn/align_val.json \
     --image_folder /workdir/radish/PET-CT/PET-CT-report \
     --vision_tower /workdir/radish/PET-CT/PET-CT-report/ckpt/petct_emb/ctvit.89000.pt \
-    --pretrain_mm_mlp_adapter /workdir/radish/PET-CT/PET-CT-report/ckpt/checkpoint-5556/mm_projector.bin \
-    --pretrained_lora_path /workdir/radish/PET-CT/PET-CT-report/ckpt/checkpoint-5556 \
+    --pretrain_mm_mlp_adapter /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss_conv/checkpoint-2786/mm_projector.bin \
+    --pretrained_lora_path /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss_conv/checkpoint-2786 \
     --tune_mm_mlp_adapter True \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss \
+    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/lora_2loss_conv_part2 \
     --num_train_epochs 20 \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \
     --gradient_accumulation_steps 1 \
     --eval_strategy "epoch" \
     --save_strategy "epoch" \
-    --learning_rate 1e-5 \
+    --learning_rate 5e-6 \
     --weight_decay 0. \
-    --warmup_ratio 0.03 \
-    --lr_scheduler_type "cosine" \
+    --warmup_ratio 0.0 \
+    --lr_scheduler_type "constant" \
     --logging_steps 1 \
     --tf32 True \
     --model_max_length 2048 \
