@@ -4,6 +4,8 @@ from transformers import HfArgumentParser
 from infer import ModelArguments, DataArguments, TrainingArguments
 from app import app
 from infer import build_model_and_tokenizer
+import os 
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 if __name__ == "__main__":
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
