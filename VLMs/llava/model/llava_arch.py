@@ -149,18 +149,76 @@ class LlavaMetaForCausalLM(ABC):
     def get_projector(self):
         return self.get_model().mm_projector
 
+    # def encode_images(self, images):
+    #     if 'PET' in images and 'CT' in images:
+    #         pet_images, ct_images = images['PET'], images['CT']
+    #         image_features = self.get_model().get_vision_tower()(pet_images, ct_images)
+    #     else:
+    #         images = images['data']
+    #         image_features = self.get_model().get_vision_tower()(images)
+    #     # image_features = image_features.view(image_features.shape[0], image_features.shape[1], -1)  # Reshape the output tensor
+    #     image_features = self.get_model().mm_projector(image_features)
+
+    #     return image_features
+
     def encode_images(self, images):
+        vision_tower = self.get_model().get_vision_tower()
+
         if 'PET' in images and 'CT' in images:
-            pet_images, ct_images = images['PET'], images['CT']
-            image_features = self.get_model().get_vision_tower()(pet_images, ct_images)
+            pet_images = images['PET']   # (B, c, t, H, W)
+            ct_images  = images['CT']
+
+            device = ct_images.device
+
+            # 1. PET-guided voxel mask
+            voxel_mask = vision_tower.pet_enc.create_pet_mask(pet_images)
+            
+            # 2. Extract PET patch embeddings (list of (Ni, 512))
+            pet_patch_list = vision_tower.pet_enc.extract_patch_embeddings(
+                pet_images, voxel_mask, L=2
+            )
+
+            # 3. Extract CT patch embeddings (list of (Ni, 512))
+            ct_patch_list = vision_tower.ct_enc.extract_patch_embeddings(
+                ct_images, voxel_mask, L=2
+            )
+
+            # 3. Pad + resample
+            P = self.get_model().mm_projector.perceiver_fpet.num_latents
+            D = self.get_model().mm_projector.fc_fpet.out_features
+            
+            pet_batch_tokens, ct_batch_tokens = [], []
+
+            for pet_embs, ct_embs in zip(pet_patch_list, ct_patch_list):
+                pet_batch_tokens.append(
+                    torch.zeros(P, D, device=device)
+                    if pet_embs.numel() == 0
+                    else self.get_model().mm_projector(
+                        pet_embs.unsqueeze(0), mode="focal_pet"
+                    ).squeeze(0)
+                )
+
+                ct_batch_tokens.append(
+                    torch.zeros(P, D, device=device)
+                    if ct_embs.numel() == 0
+                    else self.get_model().mm_projector(
+                        ct_embs.unsqueeze(0), mode="focal_ct"
+                    ).squeeze(0)
+                )
+
+            pet_focal_feat = torch.stack(pet_batch_tokens, dim=0)  # (B, P, D)
+            ct_focal_feat = torch.stack(ct_batch_tokens, dim=0)  # (B, P, D)
+            global_feat = vision_tower(pet_images, ct_images)
+            global_feat = self.get_model().mm_projector(global_feat, mode="global")
+            
+            return torch.cat([global_feat, pet_focal_feat, ct_focal_feat], dim=1)
+
         else:
             images = images['data']
-            image_features = self.get_model().get_vision_tower()(images)
-        # image_features = image_features.view(image_features.shape[0], image_features.shape[1], -1)  # Reshape the output tensor
-        image_features = self.get_model().mm_projector(image_features)
-
-        return image_features
-
+            image_features = vision_tower(images)
+            image_features = self.get_model().mm_projector(image_features)
+            return image_features
+    
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None

@@ -34,7 +34,7 @@ deepspeed --num_gpus=1 --master_port=29511 llava/train/test.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir /workdir/radish/PET-CT/ctvit_m3d/checkpoints/infer/test \
+    --output_dir /workdir/radish/PET-CT/ctvit_m3d/checkpoints/infer/test1 \
     --num_train_epochs 10 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

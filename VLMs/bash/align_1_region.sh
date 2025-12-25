@@ -14,7 +14,7 @@ MODEL_VERSION=llava-med-v1.5-mistral-7b
 PROMPT_VERSION=v1
 ########### DO NOT CHANGE ###########
 
-deepspeed --num_gpus=1 llava/train/train_mem.py \
+deepspeed --num_gpus=1 --master_port=29501 llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path /workdir/radish/PET-CT/PET-CT-report/ckpt/llava-med-v1.5-mistral-7b \
     --version $PROMPT_VERSION \
@@ -28,7 +28,7 @@ deepspeed --num_gpus=1 llava/train/train_mem.py \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
     --bf16 True \
-    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/align_1loss_conv \
+    --output_dir /workdir/radish/PET-CT/ctvit_llavamed/checkpoints/align_region \
     --num_train_epochs 5 \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \

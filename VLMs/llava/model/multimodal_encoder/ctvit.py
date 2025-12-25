@@ -533,6 +533,132 @@ class CTViT(nn.Module):
 
         return loss
 
+    def create_pet_mask(self,
+        pet_images,
+        topk=20,
+        ratio=0.4
+    ):
+        """
+        pet_images: (B, C, T, H, W)
+        return: (B, T, H, W) bool
+        """
+        suv = pet_images[:, 0]  # (B, T, H, W)
+        B = suv.shape[0]
+
+        mask = torch.zeros_like(suv, dtype=torch.bool)
+
+        for b in range(B):
+            flat = suv[b].flatten()
+            vals, idx = torch.topk(flat, k=min(topk, flat.numel()))
+
+            for v in vals:
+                thr = v * ratio
+                mask[b] |= (suv[b] > thr)
+
+        return mask
+
+    def voxel_mask_to_patch_mask(self, voxel_mask):
+        """
+        voxel_mask: (b, t, H, W) bool / {0,1}
+        return:     (b, t', h', w') bool
+        """
+        pt = self.temporal_patch_size
+        ph, pw = self.patch_size
+
+        patch_mask = rearrange(
+            voxel_mask,
+            'b (t pt) (h ph) (w pw) -> b t h w (pt ph pw)',
+            pt=pt, ph=ph, pw=pw
+        )
+
+        return patch_mask.any(dim=-1)
+
+    def extract_patch_embeddings(self, video, voxel_mask, L):
+        """
+        video:      (b, c, t, H, W)
+        voxel_mask: (b, t, H, W) bool
+        L:          number of EARLY temporal layers
+
+        return:
+            patch_embs_list: List[Tensor], len=b
+                Tensor_i: (Ni, d)
+        """
+
+        device = video.device
+        b = video.shape[0]
+        
+        # -------------------------------------------------
+        # 1. Patch embedding
+        # -------------------------------------------------
+        tokens = self.to_patch_emb(video)          # (b, t, h, w, d)
+        _, t, h, w, d = tokens.shape
+        video_shape = tuple(tokens.shape[:-1])
+
+        # -------------------------------------------------
+        # 2. Patch mask (voxel -> patch)
+        # -------------------------------------------------
+        patch_mask = self.voxel_mask_to_patch_mask(voxel_mask)  # (b, t, h, w)
+
+        # -------------------------------------------------
+        # 3. Spatial transformer (FULL)
+        # -------------------------------------------------
+        x = rearrange(tokens, 'b t h w d -> (b t) (h w) d')
+        attn_bias = self.spatial_rel_pos_bias(h, w, device=device)
+
+        x = self.enc_spatial_transformer(
+            x,
+            attn_bias=attn_bias,
+            video_shape=video_shape
+        )
+
+        x = rearrange(x, '(b t) (h w) d -> b t h w d', b=b, h=h, w=w)
+
+        # -------------------------------------------------
+        # 4. Temporal transformer (EARLY layers)
+        # -------------------------------------------------
+        x_temp = rearrange(x, 'b t h w d -> (b h w) t d')
+
+        _, temporal_hiddens = self.enc_temporal_transformer(
+            x_temp,
+            return_hiddens=True,
+            video_shape=video_shape
+        )
+
+        temporal_hiddens = temporal_hiddens[:L]
+
+        temporal_hiddens = [
+            rearrange(ht, '(b h w) t d -> b t h w d', b=b, h=h, w=w)
+            for ht in temporal_hiddens
+        ]
+
+        # -------------------------------------------------
+        # 5. Collect patch embeddings PER SAMPLE
+        # -------------------------------------------------
+        patch_embs_list = []
+
+        for i in range(b):
+            indices = patch_mask[i].nonzero(as_tuple=False)  # (Ni, 3)
+
+            if indices.numel() == 0:
+                patch_embs_list.append(
+                    torch.empty(0, d, device=device)
+                )
+                continue
+
+            layer_embs = []
+            for h_l in temporal_hiddens:
+                emb_l = h_l[
+                    i,
+                    indices[:, 0],
+                    indices[:, 1],
+                    indices[:, 2]
+                ]  # (Ni, d)
+                layer_embs.append(emb_l)
+
+            patch_embs = torch.stack(layer_embs, dim=0).mean(dim=0)
+            patch_embs_list.append(patch_embs)
+
+        return patch_embs_list
 
 # --------------------------------
 
@@ -816,6 +942,61 @@ class ContinuousPositionBias(nn.Module):
 
 # transformer
 
+# class Transformer(nn.Module):
+#     def __init__(
+#         self,
+#         dim,
+#         *,
+#         depth,
+#         dim_context = None,
+#         causal = False,
+#         dim_head = 64,
+#         heads = 8,
+#         ff_mult = 4,
+#         peg = False,
+#         peg_causal = False,
+#         attn_num_null_kv = 2,
+#         has_cross_attn = False,
+#         attn_dropout = 0.,
+#         ff_dropout = 0.
+#     ):
+#         super().__init__()
+#         self.layers = nn.ModuleList([])
+
+#         for _ in range(depth):
+#             self.layers.append(nn.ModuleList([
+#                 PEG(dim = dim, causal = peg_causal) if peg else None,
+#                 Attention(dim = dim, dim_head = dim_head, heads = heads, causal = causal, dropout = attn_dropout),
+#                 Attention(dim = dim, dim_head = dim_head, dim_context = dim_context, heads = heads, causal = False, num_null_kv = attn_num_null_kv, dropout = attn_dropout) if has_cross_attn else None,
+#                 FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
+#             ]))
+
+#         self.norm_out = LayerNorm(dim)
+
+#     @beartype
+#     def forward(
+#         self,
+#         x,
+#         video_shape: Tuple[int, int, int, int] = None,
+#         attn_bias = None,
+#         context = None,
+#         self_attn_mask = None,
+#         cross_attn_context_mask = None
+#     ):
+
+#         for peg, self_attn, cross_attn, ff in self.layers:
+#             if exists(peg):
+#                 x = peg(x, shape = video_shape) + x
+
+#             x = self_attn(x, attn_bias = attn_bias, mask = self_attn_mask) + x
+
+#             if exists(cross_attn) and exists(context):
+#                 x = cross_attn(x, context = context, mask = cross_attn_context_mask) + x
+
+#             x = ff(x) + x
+
+#         return self.norm_out(x)
+
 class Transformer(nn.Module):
     def __init__(
         self,
@@ -840,8 +1021,22 @@ class Transformer(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PEG(dim = dim, causal = peg_causal) if peg else None,
-                Attention(dim = dim, dim_head = dim_head, heads = heads, causal = causal, dropout = attn_dropout),
-                Attention(dim = dim, dim_head = dim_head, dim_context = dim_context, heads = heads, causal = False, num_null_kv = attn_num_null_kv, dropout = attn_dropout) if has_cross_attn else None,
+                Attention(
+                    dim = dim,
+                    dim_head = dim_head,
+                    heads = heads,
+                    causal = causal,
+                    dropout = attn_dropout
+                ),
+                Attention(
+                    dim = dim,
+                    dim_head = dim_head,
+                    dim_context = dim_context,
+                    heads = heads,
+                    causal = False,
+                    num_null_kv = attn_num_null_kv,
+                    dropout = attn_dropout
+                ) if has_cross_attn else None,
                 FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
             ]))
 
@@ -851,28 +1046,55 @@ class Transformer(nn.Module):
     def forward(
         self,
         x,
+        *,
         video_shape: Tuple[int, int, int, int] = None,
         attn_bias = None,
         context = None,
         self_attn_mask = None,
-        cross_attn_context_mask = None
+        cross_attn_context_mask = None,
+        return_hiddens: bool = False
     ):
+        """
+        x: (batch, seq, dim)
+
+        return:
+            if return_hiddens = False:
+                x_normed
+            else:
+                x_normed, hiddens
+                where hiddens[l] is output AFTER layer l (before final norm)
+        """
+
+        hiddens = [] if return_hiddens else None
 
         for peg, self_attn, cross_attn, ff in self.layers:
             if exists(peg):
                 x = peg(x, shape = video_shape) + x
 
-            x = self_attn(x, attn_bias = attn_bias, mask = self_attn_mask) + x
+            x = self_attn(
+                x,
+                attn_bias = attn_bias,
+                mask = self_attn_mask
+            ) + x
 
             if exists(cross_attn) and exists(context):
-                x = cross_attn(x, context = context, mask = cross_attn_context_mask) + x
+                x = cross_attn(
+                    x,
+                    context = context,
+                    mask = cross_attn_context_mask
+                ) + x
 
             x = ff(x) + x
 
-        return self.norm_out(x)
+            if return_hiddens:
+                hiddens.append(x)
 
+        x = self.norm_out(x)
 
+        if return_hiddens:
+            return x, hiddens
 
+        return x
 
 import torch
 from torch import nn, einsum
