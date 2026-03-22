@@ -655,8 +655,8 @@ from tqdm import tqdm
 from llava.conversation import conv_templates
 num_chunks = 1 
 chunk_idx = 0 
-# conv_mode = 'llava_v1'
-conv_mode = 'llava_llama_2' 
+conv_mode = 'llava_v1'
+# conv_mode = 'llava_llama_2' 
 num_beams = 1 
 top_p = None
 

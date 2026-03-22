@@ -177,6 +177,7 @@ class LlavaMetaForCausalLM(ABC):
             pet_patch_list = vision_tower.pet_enc.extract_patch_embeddings(
                 pet_images, voxel_mask, L=2
             )
+            print(len(pet_patch_list[0]))
 
             # 3. Extract CT patch embeddings (list of (Ni, 512))
             ct_patch_list = vision_tower.ct_enc.extract_patch_embeddings(
